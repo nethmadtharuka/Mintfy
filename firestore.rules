@@ -1,34 +1,250 @@
 rules_version = '2';
 
+// Mintfy Firestore security rules
+// - Every document lives under users/{uid}; only the owner can access it (FR-A3, NFR-04).
+// - Money is whole cents stored as integers, never decimals (NFR-05).
+// - Receipts keep original amount, currency, rate and LKR value (FR-B5).
+// - Anything not matched below is denied.
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ---- Helper functions ----
-    // True when the request comes from a signed-in user.
-    function isSignedIn() {
-      return request.auth != null;
+    // ---------- Helpers ----------
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
     }
 
-    // True when the signed-in user is the owner of this data (FR-A3, NFR-04).
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
+    // The document as it will look after this write.
+    function incoming() {
+      return request.resource.data;
     }
 
-    // ---- users/{userId} : one document per Mintfy user ----
-    match /users/{userId} {
-      allow read, create, update: if isOwner(userId);
-      allow delete: if false;   // account deletion is not in scope
-
-      // Each private sub-collection: only the owner may read or write.
-      match /incomeSources/{docId}     { allow read, write: if isOwner(userId); }
-      match /incomeEntries/{docId}     { allow read, write: if isOwner(userId); }
-      match /expenses/{docId}          { allow read, write: if isOwner(userId); }
-      match /categories/{docId}        { allow read, write: if isOwner(userId); }
-      match /paymentMethods/{docId}    { allow read, write: if isOwner(userId); }
-      match /recurringExpenses/{docId} { allow read, write: if isOwner(userId); }
-      match /goals/{docId}             { allow read, write: if isOwner(userId); }
+    // Has every required field and nothing outside required + optional.
+    function hasShape(required, optional) {
+      return incoming().keys().hasAll(required)
+          && incoming().keys().hasOnly(required.concat(optional));
     }
 
-    // Anything not matched above is denied automatically.
+    function isText(v, max) {
+      return v is string && v.size() > 0 && v.size() <= max;
+    }
+
+    function isOptionalText(f, max) {
+      return incoming().get(f, null) == null
+          || (incoming()[f] is string && incoming()[f].size() <= max);
+    }
+
+    function isCents(v) {
+      return v is int && v >= 0;
+    }
+
+    function isPositiveCents(v) {
+      return v is int && v > 0;
+    }
+
+    function isOptionalCents(f) {
+      return incoming().get(f, null) == null || isCents(incoming()[f]);
+    }
+
+    function isCurrency(v) {
+      return v is string && v.matches('^[A-Z]{3,5}$');
+    }
+
+    // createdAt is set once by the server; updatedAt is refreshed on every write.
+    function isNewTimestamps() {
+      return incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+    }
+
+    function isUpdatedTimestamps() {
+      return incoming().createdAt == resource.data.createdAt
+          && incoming().updatedAt == request.time;
+    }
+
+    // ---------- users/{uid} ----------
+    match /users/{uid} {
+
+      function isValidProfile() {
+        return hasShape(['email', 'baseCurrency', 'createdAt', 'updatedAt'],
+                        ['displayName', 'estimateMinCents', 'estimateMaxCents'])
+            && incoming().email == request.auth.token.email
+            && incoming().baseCurrency == 'LKR'
+            && isOptionalText('displayName', 60)
+            && isOptionalCents('estimateMinCents')
+            && isOptionalCents('estimateMaxCents')
+            // FR-B8: the estimate range must run from low to high
+            && (incoming().get('estimateMinCents', null) == null
+                || incoming().get('estimateMaxCents', null) == null
+                || incoming().estimateMinCents <= incoming().estimateMaxCents);
+      }
+
+      allow read: if isOwner(uid);
+      allow create: if isOwner(uid) && isValidProfile() && isNewTimestamps();
+      allow update: if isOwner(uid) && isValidProfile() && isUpdatedTimestamps();
+      allow delete: if false;
+
+      // ----- Income sources (FR-B1, FR-B3) -----
+      match /incomeSources/{sourceId} {
+        function isValidSource() {
+          return hasShape(['name', 'type', 'defaultCurrency', 'archived', 'createdAt', 'updatedAt'],
+                          ['expectedAmountCents'])
+              && isText(incoming().name, 60)
+              && incoming().type in ['SALARY', 'FREELANCE', 'ADSENSE', 'CRYPTO', 'OTHER']
+              && isCurrency(incoming().defaultCurrency)
+              && incoming().archived is bool
+              && isOptionalCents('expectedAmountCents');
+        }
+
+        allow read: if isOwner(uid);
+        allow create: if isOwner(uid) && isValidSource() && isNewTimestamps();
+        allow update: if isOwner(uid) && isValidSource() && isUpdatedTimestamps()
+                      && incoming().type == resource.data.type;  // a source's type never changes
+        allow delete: if false;                                   // archive instead: entries reference it
+      }
+
+      // ----- Income entries: receipts and freelance invoices (FR-B2 to FR-B9, FR-E6) -----
+      match /incomeEntries/{entryId} {
+        function hasValidAmounts() {
+          let d = incoming();
+          return d.originalAmountCents is int
+              && d.lkrAmountCents is int
+              && d.exchangeRate is number
+              && d.exchangeRate > 0
+              // FR-B9: crypto is a signed gain or loss; every other source is positive
+              && (d.sourceType == 'CRYPTO'
+                    ? (d.originalAmountCents != 0
+                       && d.lkrAmountCents != 0
+                       && (d.originalAmountCents > 0) == (d.lkrAmountCents > 0))
+                    : (d.originalAmountCents > 0 && d.lkrAmountCents > 0))
+              // FR-B5: an LKR receipt has no conversion
+              && (d.currency != 'LKR'
+                    || (d.exchangeRate == 1 && d.lkrAmountCents == d.originalAmountCents))
+              // FR-B3: if salary base and bonus are both given, they add up to the amount
+              && (d.get('baseAmountCents', null) == null
+                    || d.get('bonusAmountCents', null) == null
+                    || d.baseAmountCents + d.bonusAmountCents == d.originalAmountCents);
+        }
+
+        function isValidEntry() {
+          let d = incoming();
+          return hasShape(['sourceId', 'sourceType', 'status', 'date', 'currency',
+                           'originalAmountCents', 'exchangeRate', 'lkrAmountCents',
+                           'createdAt', 'updatedAt'],
+                          ['baseAmountCents', 'bonusAmountCents', 'client', 'project',
+                           'milestone', 'dueDate', 'note'])
+              && isText(d.sourceId, 128)
+              && d.sourceType in ['SALARY', 'FREELANCE', 'ADSENSE', 'CRYPTO', 'OTHER']
+              && d.status in ['EXPECTED', 'INVOICED', 'RECEIVED']
+              // FR-E6: only freelance or other income can be waiting for payment
+              && (d.status == 'RECEIVED' || d.sourceType in ['FREELANCE', 'OTHER'])
+              && d.date is timestamp
+              && isCurrency(d.currency)
+              && hasValidAmounts()
+              && isOptionalCents('baseAmountCents')
+              && isOptionalCents('bonusAmountCents')
+              && isOptionalText('client', 80)
+              && isOptionalText('project', 80)
+              && isOptionalText('milestone', 80)
+              && (d.get('dueDate', null) == null || d.dueDate is timestamp)
+              && isOptionalText('note', 200);
+        }
+
+        allow read, delete: if isOwner(uid);                       // FR-C5
+        allow create: if isOwner(uid) && isValidEntry() && isNewTimestamps();
+        allow update: if isOwner(uid) && isValidEntry() && isUpdatedTimestamps()
+                      && incoming().sourceType == resource.data.sourceType;
+      }
+
+      // ----- Expenses (FR-C1 to FR-C5, FR-H3) -----
+      match /expenses/{expenseId} {
+        function isValidExpense() {
+          return hasShape(['amountCents', 'date', 'categoryId', 'paymentMethodId',
+                           'createdAt', 'updatedAt'],
+                          ['note', 'recurringId'])
+              && isPositiveCents(incoming().amountCents)
+              && incoming().date is timestamp
+              && isText(incoming().categoryId, 128)
+              && isText(incoming().paymentMethodId, 128)
+              && isOptionalText('note', 200)
+              && isOptionalText('recurringId', 128);
+        }
+
+        allow read, delete: if isOwner(uid);
+        allow create: if isOwner(uid) && isValidExpense() && isNewTimestamps();
+        allow update: if isOwner(uid) && isValidExpense() && isUpdatedTimestamps();
+      }
+
+      // ----- Categories (FR-D1, FR-D2, FR-D4) -----
+      match /categories/{categoryId} {
+        function isValidCategory() {
+          return hasShape(['name', 'spendingType', 'builtIn', 'archived', 'createdAt', 'updatedAt'],
+                          ['icon'])
+              && isText(incoming().name, 40)
+              && incoming().spendingType in ['COMMITTED', 'DISCRETIONARY']
+              && incoming().builtIn is bool
+              && incoming().archived is bool
+              && isOptionalText('icon', 40);
+        }
+
+        allow read: if isOwner(uid);
+        allow create: if isOwner(uid) && isValidCategory() && isNewTimestamps();
+        allow update: if isOwner(uid) && isValidCategory() && isUpdatedTimestamps()
+                      && incoming().builtIn == resource.data.builtIn;
+        allow delete: if false;                                    // archive instead
+      }
+
+      // ----- Payment methods (FR-C2) -----
+      match /paymentMethods/{methodId} {
+        function isValidPaymentMethod() {
+          return hasShape(['name', 'type', 'archived', 'createdAt', 'updatedAt'], [])
+              && isText(incoming().name, 40)
+              && incoming().type in ['CASH', 'CARD', 'ACCOUNT']
+              && incoming().archived is bool;
+        }
+
+        allow read: if isOwner(uid);
+        allow create: if isOwner(uid) && isValidPaymentMethod() && isNewTimestamps();
+        allow update: if isOwner(uid) && isValidPaymentMethod() && isUpdatedTimestamps();
+        allow delete: if false;                                    // archive instead
+      }
+
+      // ----- Recurring expenses (FR-C6) -----
+      match /recurringExpenses/{recurringId} {
+        function isValidRecurring() {
+          return hasShape(['name', 'categoryId', 'paymentMethodId', 'amountCents', 'frequency',
+                           'nextDueDate', 'active', 'createdAt', 'updatedAt'], [])
+              && isText(incoming().name, 60)
+              && isText(incoming().categoryId, 128)
+              && isText(incoming().paymentMethodId, 128)
+              && isPositiveCents(incoming().amountCents)
+              && incoming().frequency in ['WEEKLY', 'MONTHLY', 'YEARLY']
+              && incoming().nextDueDate is timestamp
+              && incoming().active is bool;
+        }
+
+        allow read, delete: if isOwner(uid);
+        allow create: if isOwner(uid) && isValidRecurring() && isNewTimestamps();
+        allow update: if isOwner(uid) && isValidRecurring() && isUpdatedTimestamps();
+      }
+
+      // ----- Savings goals (FR-E1) -----
+      match /goals/{goalId} {
+        function isValidGoal() {
+          return hasShape(['name', 'targetAmountCents', 'startingSavedCents', 'startDate',
+                           'deadline', 'status', 'createdAt', 'updatedAt'], [])
+              && isText(incoming().name, 60)
+              && isPositiveCents(incoming().targetAmountCents)
+              && isCents(incoming().startingSavedCents)
+              && incoming().startDate is timestamp
+              && incoming().deadline is timestamp
+              && incoming().deadline > incoming().startDate
+              && incoming().status in ['ACTIVE', 'ACHIEVED', 'ARCHIVED'];
+        }
+
+        allow read, delete: if isOwner(uid);
+        allow create: if isOwner(uid) && isValidGoal() && isNewTimestamps();
+        allow update: if isOwner(uid) && isValidGoal() && isUpdatedTimestamps();
+      }
+    }
   }
 }
