@@ -97,17 +97,31 @@ _TODO: adjust to match the final structure._
 
 ## 4. Firebase Configuration
 
-1. Create a project in the [Firebase Console](https://console.firebase.google.com).
+1. Create a project in the [Firebase Console](https://console.firebase.google.com) (the free Spark plan is enough).
 2. Add an Android app with the package name `com.mintfy.app`.
 3. Download `google-services.json` and place it in `app/`.
    This file is listed in `.gitignore` and is **not** committed.
 4. Enable **Authentication → Sign-in method → Email/Password**.
-5. Create a **Cloud Firestore** database.
-6. Deploy the security rules from [`firestore.rules`](firestore.rules):
+5. Create a **Cloud Firestore** database in **production mode**, location `asia-south1` (Mumbai).
+6. Install the Firebase CLI and link this folder to your project:
    ```bash
-   firebase deploy --only firestore:rules
+   npm install -g firebase-tools
+   firebase login
+   firebase use --add        # pick your project
    ```
-7. _TODO: add any composite indexes (see `firestore.indexes.json`)._
+7. Deploy the security rules ([`firestore.rules`](firestore.rules)) and composite indexes
+   ([`firestore.indexes.json`](firestore.indexes.json)):
+   ```bash
+   firebase deploy --only firestore:rules,firestore:indexes
+   ```
+   The five composite indexes take a few minutes to build. Check **Firestore → Indexes** until all show **Enabled**.
+8. (Optional) Run the security rules tests on the local emulator. Needs Node.js and Java 11+.
+   ```bash
+   npm --prefix firestore-tests install
+   firebase emulators:exec --only firestore --project demo-mintfy "npm --prefix firestore-tests test"
+   ```
+   The tests use the `demo-mintfy` project ID, so they never touch the live database.
+   The emulator runs on port 8085 (see [`firebase.json`](firebase.json)).
 
 ---
 
@@ -132,10 +146,12 @@ The debug APK is created at `app/build/outputs/apk/debug/app-debug.apk`.
 |---|---|
 | Requirements (SRS) | `docs/` _TODO_ |
 | Use case diagram | `docs/` _TODO_ |
-| Firestore schema | `docs/` _TODO_ |
+| Firestore schema | `docs/firestore/` _TODO_ |
 | MVVM architecture diagram | `docs/` _TODO_ |
 | Annotated wireframes | `docs/` _TODO_ |
-| Firestore security rules | [`firestore.rules`](firestore.rules) _TODO_ |
+| Firestore security rules | [`firestore.rules`](firestore.rules) |
+| Firestore composite indexes | [`firestore.indexes.json`](firestore.indexes.json) |
+| Security rules tests | [`firestore-tests/rules.test.js`](firestore-tests/rules.test.js) |
 
 ---
 
