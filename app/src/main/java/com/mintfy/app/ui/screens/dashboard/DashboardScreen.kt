@@ -5,39 +5,41 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.mintfy.app.ui.components.MintfyCard
+import com.mintfy.app.ui.components.MintfyTopBar
+import com.mintfy.app.ui.components.SecondaryButton
 import com.mintfy.app.ui.theme.MintfyTheme
 
-/** Placeholder home screen until the dashboard is built. */
+/** Placeholder home screen until the dashboard is built; uses the Figma top bar and card styles. */
 @Composable
 fun DashboardScreen(email: String?, onSignOut: () -> Unit) {
-    Scaffold { innerPadding ->
+    Scaffold(topBar = { MintfyTopBar("Dashboard") }) { innerPadding ->
         Column(
-            verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.fillMaxSize().padding(innerPadding).padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.fillMaxSize().padding(innerPadding).padding(16.dp),
         ) {
-            Text("Dashboard", style = MaterialTheme.typography.headlineMedium)
             if (email != null) {
-                Text(
-                    "Signed in as $email",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                MintfyCard {
+                    Text(
+                        "Signed in as",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(email, style = MaterialTheme.typography.titleMedium)
+                }
             }
-            OutlinedButton(onClick = onSignOut) { Text("Sign out") }
+            SecondaryButton("Sign out", onClick = onSignOut)
         }
     }
 }
 
-@Preview(showBackground = true)
+@Preview
 @Composable
 fun DashboardScreenPreview() {
     MintfyTheme {

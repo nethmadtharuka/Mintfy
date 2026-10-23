@@ -1,8 +1,10 @@
 package com.mintfy.app
 
+import android.graphics.Color
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import com.google.firebase.FirebaseApp
@@ -27,7 +29,11 @@ class MainActivity : ComponentActivity() {
             Log.e("MintfyFirebase", "Firebase initialization failed!")
         }
 
-        enableEdgeToEdge()
+        // Dark only: keep light status/navigation bar icons even when the system is in light mode.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+        )
 
         setContent {
             MintfyTheme {
