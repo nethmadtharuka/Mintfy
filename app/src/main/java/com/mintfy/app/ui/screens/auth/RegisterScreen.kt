@@ -2,9 +2,8 @@ package com.mintfy.app.ui.screens.auth
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -12,7 +11,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -24,6 +22,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mintfy.app.ui.components.ErrorBanner
+import com.mintfy.app.ui.components.MintfyPasswordField
+import com.mintfy.app.ui.components.MintfyTextField
+import com.mintfy.app.ui.components.MintfyTopBar
+import com.mintfy.app.ui.components.PrimaryButton
+import com.mintfy.app.ui.components.SecondaryButton
 import com.mintfy.app.ui.theme.MintfyTheme
 
 @Composable
@@ -32,6 +36,7 @@ fun RegisterScreen(viewModel: AuthViewModel, onSignInClick: () -> Unit) {
     RegisterContent(form = form, onRegister = viewModel::register, onSignInClick = onSignInClick)
 }
 
+/** Not drawn separately in Figma; built from the same "01 Sign in / Register" components. */
 @Composable
 fun RegisterContent(
     form: AuthFormState,
@@ -44,31 +49,30 @@ fun RegisterContent(
     var confirmPassword by remember { mutableStateOf("") }
     val submit = { onRegister(displayName, email, password, confirmPassword) }
 
-    Scaffold { innerPadding ->
+    Scaffold(topBar = { MintfyTopBar("Create your account") }) { innerPadding ->
         Column(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .consumeWindowInsets(innerPadding)
                 .imePadding()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp),
+                .padding(16.dp),
         ) {
-            Spacer(Modifier.height(48.dp))
-            Text("Create your account", style = MaterialTheme.typography.headlineMedium)
             Text(
-                "Track every income source and see your goal move.",
+                "Track every income source and see your savings goal move.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            FormTextField(
+            MintfyTextField(
                 value = displayName,
                 onValueChange = { displayName = it },
                 label = "Name (optional)",
                 error = form.displayNameError,
                 enabled = !form.isLoading,
             )
-            FormTextField(
+            MintfyTextField(
                 value = email,
                 onValueChange = { email = it },
                 label = "Email",
@@ -76,14 +80,14 @@ fun RegisterContent(
                 enabled = !form.isLoading,
                 keyboardType = KeyboardType.Email,
             )
-            PasswordField(
+            MintfyPasswordField(
                 value = password,
                 onValueChange = { password = it },
                 label = "Password",
                 error = form.passwordError,
                 enabled = !form.isLoading,
             )
-            PasswordField(
+            MintfyPasswordField(
                 value = confirmPassword,
                 onValueChange = { confirmPassword = it },
                 label = "Confirm password",
@@ -91,16 +95,14 @@ fun RegisterContent(
                 enabled = !form.isLoading,
                 onDone = submit,
             )
-            FormError(form.error)
-            SubmitButton("Create account", form.isLoading, submit)
-            TextButton(onClick = onSignInClick, enabled = !form.isLoading) {
-                Text("Already have an account? Sign in")
-            }
+            ErrorBanner(form.error)
+            PrimaryButton("Create account", onClick = submit, isLoading = form.isLoading)
+            SecondaryButton("Back to sign in", onClick = onSignInClick, enabled = !form.isLoading)
         }
     }
 }
 
-@Preview(showBackground = true)
+@Preview
 @Composable
 fun RegisterContentPreview() {
     MintfyTheme {
