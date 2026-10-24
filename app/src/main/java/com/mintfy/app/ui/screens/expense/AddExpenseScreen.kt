@@ -1,29 +1,16 @@
 package com.mintfy.app.ui.screens.expense
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SelectableDates
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -42,16 +29,18 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mintfy.app.data.model.DefaultReferenceData
 import com.mintfy.app.data.model.SpendingType
+import com.mintfy.app.ui.components.ChipGroup
 import com.mintfy.app.ui.components.ErrorBanner
+import com.mintfy.app.ui.components.MintfyDatePicker
 import com.mintfy.app.ui.components.MintfyTextField
 import com.mintfy.app.ui.components.MintfyTopBar
+import com.mintfy.app.ui.components.PickerField
 import com.mintfy.app.ui.components.PrimaryButton
 import com.mintfy.app.ui.components.SecondaryButton
+import com.mintfy.app.ui.components.SectionLabel
+import com.mintfy.app.ui.components.dateLabel
 import com.mintfy.app.ui.theme.MintfyTheme
-import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
 
 @Composable
 fun AddExpenseScreen(
@@ -167,7 +156,8 @@ fun AddExpenseContent(
     }
 
     if (showDatePicker) {
-        ExpenseDatePicker(
+        // Today or earlier only, so missed expenses can be backfilled (FR-C4).
+        MintfyDatePicker(
             selected = state.date,
             onConfirm = {
                 onDateSelected(it)
@@ -177,129 +167,6 @@ fun AddExpenseContent(
         )
     }
 }
-
-/** Figma section label: 12 Regular, secondary text. */
-@Composable
-private fun SectionLabel(text: String) {
-    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-}
-
-/** Chips that wrap onto new lines, exactly one selected. Shows a spinner while the options load. */
-@Composable
-private fun ChipGroup(
-    isLoading: Boolean,
-    emptyMessage: String,
-    options: List<Pair<String, String>>,
-    selectedId: String?,
-    onSelect: (String) -> Unit,
-) {
-    when {
-        isLoading -> CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-        options.isEmpty() -> Text(
-            emptyMessage,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        else -> FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            options.forEach { (id, name) ->
-                SelectChip(label = name, selected = id == selectedId, onClick = { onSelect(id) })
-            }
-        }
-    }
-}
-
-/**
- * Figma "Chip": 8dp radius, 14 x 8 padding, 13 Medium label.
- * Selected is green with black text; unselected is the card colour with a 1dp border.
- */
-@Composable
-private fun SelectChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    val colors = MaterialTheme.colorScheme
-    Surface(
-        selected = selected,
-        onClick = onClick,
-        shape = MaterialTheme.shapes.small,
-        color = if (selected) colors.primary else colors.surfaceContainerHigh,
-        contentColor = if (selected) colors.onPrimary else colors.onSurface,
-        border = if (selected) null else BorderStroke(1.dp, colors.outline),
-    ) {
-        Text(label, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(14.dp, 8.dp))
-    }
-}
-
-/** Looks like the Figma "Input" but opens a picker instead of the keyboard. */
-@Composable
-private fun PickerField(label: String, value: String, error: String?, onClick: () -> Unit) {
-    val colors = MaterialTheme.colorScheme
-    Column {
-        Surface(
-            onClick = onClick,
-            shape = MaterialTheme.shapes.medium,
-            color = colors.surfaceContainer,
-            border = BorderStroke(1.dp, if (error != null) colors.error else colors.outline),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(label, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
-                Text(value, style = MaterialTheme.typography.titleSmall, color = colors.onSurface)
-            }
-        }
-        if (error != null) {
-            Text(
-                error,
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.error,
-                modifier = Modifier.padding(start = 16.dp, top = 4.dp),
-            )
-        }
-    }
-}
-
-/** Material 3 date picker that only allows today or earlier, so missed expenses can be backfilled (FR-C4). */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ExpenseDatePicker(selected: LocalDate, onConfirm: (LocalDate) -> Unit, onDismiss: () -> Unit) {
-    // The Material date picker works in UTC milliseconds, so convert at the edges only.
-    val todayMillis = LocalDate.now().toUtcMillis()
-    val pickerState = rememberDatePickerState(
-        initialSelectedDateMillis = selected.toUtcMillis(),
-        selectableDates = object : SelectableDates {
-            override fun isSelectableDate(utcTimeMillis: Long) = utcTimeMillis <= todayMillis
-            override fun isSelectableYear(year: Int) = year <= LocalDate.now().year
-        },
-    )
-    DatePickerDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton(onClick = {
-                pickerState.selectedDateMillis?.let { onConfirm(it.toLocalDate()) } ?: onDismiss()
-            }) { Text("OK") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    ) {
-        DatePicker(state = pickerState)
-    }
-}
-
-private val dateFormat = DateTimeFormatter.ofPattern("d MMM yyyy")
-
-/** "Today · 20 Oct 2026", "Yesterday · 19 Oct 2026", or "Mon · 13 Oct 2026". */
-internal fun dateLabel(date: LocalDate, today: LocalDate): String {
-    val prefix = when (date) {
-        today -> "Today"
-        today.minusDays(1) -> "Yesterday"
-        else -> date.dayOfWeek.name.take(3).lowercase().replaceFirstChar { it.uppercase() }
-    }
-    return "$prefix · ${date.format(dateFormat)}"
-}
-
-private fun LocalDate.toUtcMillis() = atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
-
-private fun Long.toLocalDate() = Instant.ofEpochMilli(this).atZone(ZoneOffset.UTC).toLocalDate()
 
 @Preview
 @Composable

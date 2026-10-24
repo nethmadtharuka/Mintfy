@@ -21,12 +21,14 @@ import com.mintfy.app.ui.screens.auth.RegisterScreen
 import com.mintfy.app.ui.screens.auth.Session
 import com.mintfy.app.ui.screens.dashboard.DashboardScreen
 import com.mintfy.app.ui.screens.expense.AddExpenseScreen
+import com.mintfy.app.ui.screens.income.AddIncomeScreen
 
 object Routes {
     const val LOGIN = "login"
     const val REGISTER = "register"
     const val DASHBOARD = "dashboard"
     const val ADD_EXPENSE = "add_expense"
+    const val ADD_INCOME = "add_income"
 }
 
 private val authRoutes = setOf(Routes.LOGIN, Routes.REGISTER)
@@ -81,6 +83,7 @@ fun MintfyNavHost(
             DashboardScreen(
                 email = signedIn.email,
                 onAddExpense = { navController.navigate(Routes.ADD_EXPENSE) { launchSingleTop = true } },
+                onAddIncome = { navController.navigate(Routes.ADD_INCOME) { launchSingleTop = true } },
                 onSignOut = authViewModel::signOut,
             )
         }
@@ -90,6 +93,12 @@ fun MintfyNavHost(
             // or if onSaved fires again after a rotation while isSaved is still true.
             val backToDashboard: () -> Unit = { navController.popBackStack(Routes.DASHBOARD, inclusive = false) }
             AddExpenseScreen(onBack = backToDashboard, onSaved = backToDashboard)
+        }
+        composable(Routes.ADD_INCOME) {
+            if (session !is Session.SignedIn) return@composable
+            // Same back behaviour as Add expense.
+            val backToDashboard: () -> Unit = { navController.popBackStack(Routes.DASHBOARD, inclusive = false) }
+            AddIncomeScreen(onBack = backToDashboard, onSaved = backToDashboard)
         }
     }
 }
