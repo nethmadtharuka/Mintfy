@@ -2,12 +2,14 @@ package com.mintfy.app.ui.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -30,11 +32,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -45,15 +51,33 @@ import com.mintfy.app.ui.theme.MintfyTheme
 
 // Shared components from the Figma "Design System" frame. Colours, type and radii come from MintfyTheme.
 
-/** Figma "Top bar": 22 Bold title, 16dp padding, below the status bar. */
+/**
+ * Figma "Top bar": 22 Bold title, 16dp padding, below the status bar.
+ * With [onBack], shows the green "‹" back arrow used on the Add income and Add expense frames.
+ */
 @Composable
-fun MintfyTopBar(title: String) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.headlineSmall,
-        color = MaterialTheme.colorScheme.onBackground,
+fun MintfyTopBar(title: String, onBack: (() -> Unit)? = null) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(16.dp),
-    )
+    ) {
+        if (onBack != null) {
+            Text(
+                text = "‹",
+                style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Normal),
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .clickable(role = Role.Button, onClickLabel = "Back", onClick = onBack)
+                    .semantics { contentDescription = "Back" },
+            )
+        }
+        Text(
+            text = title,
+            style = MaterialTheme.typography.headlineSmall,
+            color = MaterialTheme.colorScheme.onBackground,
+        )
+    }
 }
 
 /** Figma "Input": surface fill, 12dp radius, 1dp border that turns 2dp green when focused, label inside. */

@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.mintfy.app.data.local.ExpensePreferences
 import com.mintfy.app.data.model.Category
 import com.mintfy.app.data.model.PaymentMethod
+import com.mintfy.app.data.model.SpendingType
 import com.mintfy.app.data.repository.CategoryRepository
 import com.mintfy.app.data.repository.ExpenseRepository
 import com.mintfy.app.data.repository.PaymentMethodRepository
@@ -68,7 +69,9 @@ class AddExpenseViewModel @Inject constructor(
     private val paymentMethods = paymentMethodRepository.observePaymentMethods().loadingThenList()
 
     val uiState: StateFlow<AddExpenseUiState> = combine(form, categories, paymentMethods) { f, cats, methods ->
-        val categoryList = cats.orEmpty()
+        // Figma "05 Add expense": everyday (discretionary) categories first, then committed ones.
+        // sortedBy is stable, so each group keeps the repository's order.
+        val categoryList = cats.orEmpty().sortedBy { it.spendingType != SpendingType.DISCRETIONARY }
         val methodList = methods.orEmpty()
         AddExpenseUiState(
             amount = f.amount,
