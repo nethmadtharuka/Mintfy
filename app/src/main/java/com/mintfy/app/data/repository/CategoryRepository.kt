@@ -1,16 +1,21 @@
 package com.mintfy.app.data.repository
 
+import android.util.Log
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.firestore.Source
 import com.mintfy.app.data.model.Category
 import com.mintfy.app.data.model.DefaultReferenceData
 import com.mintfy.app.data.model.SpendingType
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -21,9 +26,14 @@ class CategoryRepository @Inject constructor(
     private val auth: FirebaseAuth,
 ) {
 
+    private val seedLock = Mutex()
+    private var seededUid: String? = null
+
     /**
      * Emits the signed-in user's categories that are not archived (schema query Q10), committed first.
      * Updates in real time, including offline writes. The listener is removed when collection ends.
+     * The first time it is used after sign-in, it also creates any missing default categories (FR-D1),
+     * so every screen that shows categories (add expense, dashboard, categories) gets them.
      */
     fun observeCategories(): Flow<List<Category>> = callbackFlow {
         val uid = auth.currentUser?.uid
@@ -31,6 +41,7 @@ class CategoryRepository @Inject constructor(
             close(signedOut())
             return@callbackFlow
         }
+        launch { ensureDefaults(uid) } // in the background, so the list never waits on the network
         val registration = categories(uid)
             .whereEqualTo(ARCHIVED, false)
             .addSnapshotListener { snapshot, error ->
@@ -45,18 +56,25 @@ class CategoryRepository @Inject constructor(
     }
 
     /**
-     * Creates any default category the user does not have yet (FR-D1). Safe to call every time:
-     * existing documents are never rewritten, because the rules forbid changing createdAt.
+     * Creates any default category the user does not have yet, at most once per user per app run.
+     * It checks the server, not the local cache: an offline phone with an empty cache could otherwise
+     * try to re-create defaults that already exist, and the rules reject rewriting createdAt.
+     * Offline, it does nothing and the next call tries again. A new account is always online, because
+     * registering needs the network, so new users get their defaults straight away.
      */
-    suspend fun ensureDefaults(): Result<Unit> = attempt(::toSeedError) {
-        val uid = auth.currentUser?.uid ?: throw signedOut()
-        val existingIds = categories(uid).get().await().documents.map { it.id }.toSet()
-        val missing = DefaultReferenceData.categories.filter { it.id !in existingIds }
-        if (missing.isEmpty()) return@attempt
-
-        val batch = firestore.batch()
-        missing.forEach { batch.set(categories(uid).document(it.id), it.toNewDocument()) }
-        batch.commit().await()
+    private suspend fun ensureDefaults(uid: String) = seedLock.withLock {
+        if (seededUid == uid) return@withLock
+        attempt(::toSeedError) {
+            val existingIds = categories(uid).get(Source.SERVER).await().documents.map { it.id }.toSet()
+            val missing = DefaultReferenceData.categories.filter { it.id !in existingIds }
+            if (missing.isNotEmpty()) {
+                val batch = firestore.batch()
+                missing.forEach { batch.set(categories(uid).document(it.id), it.toNewDocument()) }
+                batch.commit().await()
+            }
+        }
+            .onSuccess { seededUid = uid }
+            .onFailure { Log.w(TAG, "Default categories not created yet; will retry", it) }
     }
 
     private fun categories(uid: String) =
@@ -95,6 +113,8 @@ class CategoryRepository @Inject constructor(
         }
 
     private companion object {
+        const val TAG = "CategoryRepository"
+
         // Field names from firestore.rules (users/{uid}/categories).
         const val NAME = "name"
         const val SPENDING_TYPE = "spendingType"

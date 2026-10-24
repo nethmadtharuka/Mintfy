@@ -1,6 +1,7 @@
 package com.mintfy.app.ui.screens.expense
 
 import java.math.BigDecimal
+import java.time.LocalDate
 
 // Plain Kotlin so it runs in JVM unit tests.
 
@@ -29,6 +30,10 @@ fun amountError(text: String): String? {
         else -> null
     }
 }
+
+/** Past dates are allowed so missed expenses can be backfilled (FR-C4); future dates are not. */
+fun dateError(date: LocalDate, today: LocalDate): String? =
+    if (date.isAfter(today)) "The date can't be in the future." else null
 
 fun noteError(note: String): String? =
     if (note.trim().length > MAX_NOTE_LENGTH) "Use at most $MAX_NOTE_LENGTH characters." else null

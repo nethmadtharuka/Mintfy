@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
+import java.time.LocalDate
 
 class ExpenseValidationTest {
 
@@ -34,6 +35,14 @@ class ExpenseValidationTest {
         assertEquals("The amount must be more than zero.", amountError("0"))
         assertEquals("The amount must be more than zero.", amountError("0.00"))
         assertEquals("That amount is too large.", amountError("100000001"))
+    }
+
+    @Test
+    fun date() {
+        val today = LocalDate.of(2026, 10, 24)
+        assertNull(dateError(today, today))
+        assertNull(dateError(today.minusDays(7), today)) // backfilling last week is allowed
+        assertEquals("The date can't be in the future.", dateError(today.plusDays(1), today))
     }
 
     @Test
