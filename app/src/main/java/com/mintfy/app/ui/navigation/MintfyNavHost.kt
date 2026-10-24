@@ -20,11 +20,13 @@ import com.mintfy.app.ui.screens.auth.LoginScreen
 import com.mintfy.app.ui.screens.auth.RegisterScreen
 import com.mintfy.app.ui.screens.auth.Session
 import com.mintfy.app.ui.screens.dashboard.DashboardScreen
+import com.mintfy.app.ui.screens.expense.AddExpenseScreen
 
 object Routes {
     const val LOGIN = "login"
     const val REGISTER = "register"
     const val DASHBOARD = "dashboard"
+    const val ADD_EXPENSE = "add_expense"
 }
 
 private val authRoutes = setOf(Routes.LOGIN, Routes.REGISTER)
@@ -76,7 +78,18 @@ fun MintfyNavHost(
         composable(Routes.DASHBOARD) {
             // Never render signed-in content without a session, even for the frame before the redirect.
             val signedIn = session as? Session.SignedIn ?: return@composable
-            DashboardScreen(email = signedIn.email, onSignOut = authViewModel::signOut)
+            DashboardScreen(
+                email = signedIn.email,
+                onAddExpense = { navController.navigate(Routes.ADD_EXPENSE) { launchSingleTop = true } },
+                onSignOut = authViewModel::signOut,
+            )
+        }
+        composable(Routes.ADD_EXPENSE) {
+            if (session !is Session.SignedIn) return@composable
+            // Pop back to the dashboard, never past it: safe if Back and Save both fire,
+            // or if onSaved fires again after a rotation while isSaved is still true.
+            val backToDashboard: () -> Unit = { navController.popBackStack(Routes.DASHBOARD, inclusive = false) }
+            AddExpenseScreen(onBack = backToDashboard, onSaved = backToDashboard)
         }
     }
 }
