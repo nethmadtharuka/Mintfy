@@ -22,7 +22,7 @@ import com.mintfy.app.ui.theme.MintfyTheme
 
 /** Placeholder home screen until the dashboard is built; uses the Figma top bar and card styles. */
 @Composable
-fun DashboardScreen(email: String?, onAddExpense: () -> Unit, onSignOut: () -> Unit) {
+fun DashboardScreen(email: String?, onAddExpense: () -> Unit, onAddIncome: () -> Unit, onSignOut: () -> Unit) {
     Scaffold(
         topBar = { MintfyTopBar("Dashboard") },
         floatingActionButton = { AddExpenseButton(onClick = onAddExpense) },
@@ -41,6 +41,8 @@ fun DashboardScreen(email: String?, onAddExpense: () -> Unit, onSignOut: () -> U
                     Text(email, style = MaterialTheme.typography.titleMedium)
                 }
             }
+            // Until the Income tab exists, this is the way into Add income.
+            SecondaryButton("Add income", onClick = onAddIncome)
             SecondaryButton("Sign out", onClick = onSignOut)
         }
     }
@@ -68,6 +70,6 @@ private fun AddExpenseButton(onClick: () -> Unit) {
 @Composable
 fun DashboardScreenPreview() {
     MintfyTheme {
-        DashboardScreen(email = "kavindu@example.com", onAddExpense = {}, onSignOut = {})
+        DashboardScreen(email = "kavindu@example.com", onAddExpense = {}, onAddIncome = {}, onSignOut = {})
     }
 }

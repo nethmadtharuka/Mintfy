@@ -52,16 +52,6 @@ class ExpenseRepository @Inject constructor(
     private fun expenses(uid: String) =
         firestore.collection("users").document(uid).collection("expenses")
 
-    /**
-     * Today keeps the real time, so today's expenses stay in the order they were spent.
-     * A backfilled day is stored at midday, which keeps it inside that day in any nearby time zone.
-     */
-    private fun LocalDate.toTimestamp(): Timestamp {
-        val zone = ZoneId.systemDefault()
-        if (this == LocalDate.now(zone)) return Timestamp.now()
-        return Timestamp(Date.from(atTime(LocalTime.NOON).atZone(zone).toInstant()))
-    }
-
     private companion object {
         const val TAG = "ExpenseRepository"
 
@@ -74,4 +64,15 @@ class ExpenseRepository @Inject constructor(
         const val CREATED_AT = "createdAt"
         const val UPDATED_AT = "updatedAt"
     }
+}
+
+/**
+ * Today keeps the real time, so today's entries stay in the order they happened.
+ * Any other day is stored at midday, which keeps it inside that day in any nearby time zone.
+ * Shared with IncomeRepository so income and expense dates line up.
+ */
+internal fun LocalDate.toTimestamp(): Timestamp {
+    val zone = ZoneId.systemDefault()
+    if (this == LocalDate.now(zone)) return Timestamp.now()
+    return Timestamp(Date.from(atTime(LocalTime.NOON).atZone(zone).toInstant()))
 }
