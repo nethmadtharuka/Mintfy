@@ -416,7 +416,7 @@ private fun Hint(text: String) {
     Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
-private fun statusLabel(status: IncomeStatus) = when (status) {
+internal fun statusLabel(status: IncomeStatus) = when (status) {
     IncomeStatus.RECEIVED -> "Received"
     IncomeStatus.EXPECTED -> "Expected"
     IncomeStatus.INVOICED -> "Invoiced"

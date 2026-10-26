@@ -368,6 +368,7 @@ fun MintfyDatePicker(
     onConfirm: (LocalDate) -> Unit,
     onDismiss: () -> Unit,
     allowFuture: Boolean = false,
+    title: String? = null, // replaces the default "Select date" when the date means something specific
 ) {
     // The Material date picker works in UTC milliseconds, so convert at the edges only.
     val todayMillis = LocalDate.now().toUtcMillis()
@@ -387,7 +388,14 @@ fun MintfyDatePicker(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     ) {
-        DatePicker(state = pickerState)
+        if (title == null) {
+            DatePicker(state = pickerState)
+        } else {
+            DatePicker(
+                state = pickerState,
+                title = { Text(title, modifier = Modifier.padding(start = 24.dp, end = 12.dp, top = 16.dp)) },
+            )
+        }
     }
 }
 
