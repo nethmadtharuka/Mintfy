@@ -28,6 +28,8 @@ fun DashboardScreen(
     onAddIncome: () -> Unit,
     onHistory: () -> Unit,
     onSignOut: () -> Unit,
+    // FR-B7: the unpaid invoice total, supplied by the invoices feature so the dashboard needn't load it.
+    unpaidInvoices: @Composable () -> Unit = {},
 ) {
     Scaffold(
         topBar = { MintfyTopBar("Dashboard") },
@@ -47,6 +49,7 @@ fun DashboardScreen(
                     Text(email, style = MaterialTheme.typography.titleMedium)
                 }
             }
+            unpaidInvoices()
             // Until the Income tab exists, this is the way into Add income.
             SecondaryButton("Add income", onClick = onAddIncome)
             // Until the bottom navigation exists, this is the way into History.

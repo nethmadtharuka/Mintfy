@@ -330,6 +330,73 @@ describe('History: edit and delete (FR-C5)', () => {
   });
 });
 
+// ---------- FR-B4, FR-B7: freelance invoices ----------
+// "Mark received" sends what IncomeRepository.updateEntry sends: every field, deleteField() for those that no
+// longer apply, a new date, a refreshed updatedAt, and never createdAt.
+describe('Invoices: mark received (FR-B4, FR-B7)', () => {
+  const ref = () => doc(alice(), 'users/alice/incomeEntries/inv');
+  const expectedInvoice = salary({
+    ...noSalaryParts,
+    sourceId: 'src_freelance',
+    sourceType: 'FREELANCE',
+    status: 'EXPECTED',
+    date: at('2026-11-05T12:00:00+05:30'),
+    originalAmountCents: 2000000,
+    lkrAmountCents: 2000000,
+    client: 'Lanka Bites',
+    project: 'React dashboard',
+    milestone: 'Milestone 1',
+    dueDate: at('2026-11-05T12:00:00+05:30'),
+    note: 'Send reminder',
+  });
+  const markReceivedPayload = (overrides = {}) => ({
+    sourceId: 'src_freelance',
+    sourceType: 'FREELANCE',
+    status: 'RECEIVED',
+    date: at('2026-10-26T09:00:00+05:30'),
+    currency: 'LKR',
+    originalAmountCents: 2000000,
+    exchangeRate: 1,
+    lkrAmountCents: 2000000,
+    baseAmountCents: deleteField(),
+    bonusAmountCents: deleteField(),
+    client: 'Lanka Bites',
+    project: 'React dashboard',
+    milestone: 'Milestone 1',
+    dueDate: deleteField(),
+    note: 'Send reminder',
+    updatedAt: serverTimestamp(),
+    ...overrides,
+  });
+
+  test('expected invoice marked received keeps createdAt and source type and drops the due date', async () => {
+    await assertSucceeds(setDoc(ref(), expectedInvoice));
+    const before = (await getDoc(ref())).data();
+    await assertSucceeds(updateDoc(ref(), markReceivedPayload()));
+    const after = (await getDoc(ref())).data();
+    if (after.status !== 'RECEIVED') throw new Error('status not updated');
+    if ('dueDate' in after || 'baseAmountCents' in after) throw new Error('obsolete fields were kept');
+    if (after.sourceType !== 'FREELANCE' || after.client !== 'Lanka Bites') throw new Error('invoice details changed');
+    if (!after.createdAt.isEqual(before.createdAt)) throw new Error('createdAt changed');
+  });
+
+  test('marking received cannot also rewrite createdAt', async () => {
+    await assertSucceeds(setDoc(ref(), expectedInvoice));
+    await assertFails(updateDoc(ref(), markReceivedPayload({ createdAt: Timestamp.now() })));
+  });
+
+  test('marking received cannot change the source type', async () => {
+    await assertSucceeds(setDoc(ref(), expectedInvoice));
+    await assertFails(updateDoc(ref(), markReceivedPayload({ sourceType: 'OTHER' })));
+  });
+
+  test('received salary cannot be turned into an invoice (FR-E6)', async () => {
+    const pay = doc(alice(), 'users/alice/incomeEntries/pay');
+    await assertSucceeds(setDoc(pay, salary()));
+    await assertFails(updateDoc(pay, { status: 'INVOICED', updatedAt: serverTimestamp() }));
+  });
+});
+
 // ---------- FR-D1, FR-D2: categories ----------
 describe('Categories (FR-D1, FR-D2)', () => {
   const ref = () => doc(alice(), 'users/alice/categories/default_food_coffee');

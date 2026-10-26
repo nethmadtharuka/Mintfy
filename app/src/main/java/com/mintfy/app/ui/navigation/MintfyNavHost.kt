@@ -28,6 +28,8 @@ import com.mintfy.app.ui.screens.expense.AddExpenseScreen
 import com.mintfy.app.ui.screens.history.EntryKind
 import com.mintfy.app.ui.screens.history.HistoryScreen
 import com.mintfy.app.ui.screens.income.AddIncomeScreen
+import com.mintfy.app.ui.screens.invoices.InvoicesScreen
+import com.mintfy.app.ui.screens.invoices.UnpaidInvoicesCard
 
 object Routes {
     const val LOGIN = "login"
@@ -36,6 +38,7 @@ object Routes {
     const val ADD_EXPENSE = "add_expense"
     const val ADD_INCOME = "add_income"
     const val HISTORY = "history"
+    const val INVOICES = "invoices"
 
     /** Optional entry ID: with it, the add screens edit that saved entry instead (FR-C5). */
     const val ARG_ID = "id"
@@ -101,6 +104,18 @@ fun MintfyNavHost(
                 onAddIncome = { navController.navigate(Routes.ADD_INCOME) { launchSingleTop = true } },
                 onHistory = { navController.navigate(Routes.HISTORY) { launchSingleTop = true } },
                 onSignOut = authViewModel::signOut,
+                unpaidInvoices = {
+                    UnpaidInvoicesCard(onViewInvoices = { navController.navigate(Routes.INVOICES) { launchSingleTop = true } })
+                },
+            )
+        }
+        composable(Routes.INVOICES) { entry ->
+            if (session !is Session.SignedIn) return@composable
+            InvoicesScreen(
+                onBack = navController.closer(entry),
+                // Editing, deleting and changing the amount reuse the Add income form, like History does.
+                onOpenInvoice = { id -> navController.navigate(Routes.editIncome(id)) { launchSingleTop = true } },
+                onAddIncome = { navController.navigate(Routes.ADD_INCOME) { launchSingleTop = true } },
             )
         }
         composable(Routes.HISTORY) { entry ->

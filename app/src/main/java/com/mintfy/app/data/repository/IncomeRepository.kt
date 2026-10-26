@@ -3,6 +3,7 @@ package com.mintfy.app.data.repository
 import android.util.Log
 import com.google.android.gms.tasks.Task
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
@@ -49,16 +50,30 @@ class IncomeRepository @Inject constructor(
      * Income dated [from] to [to] inclusive, newest first, in real time, including unpaid entries.
      * Served from the phone's cache first, so it also works offline. The listener is removed when collection ends.
      */
-    fun observeEntries(from: LocalDate, to: LocalDate): Flow<List<IncomeEntry>> = callbackFlow {
+    fun observeEntries(from: LocalDate, to: LocalDate): Flow<List<IncomeEntry>> = observe { entries ->
+        entries
+            .whereGreaterThanOrEqualTo(DATE, from.startOfDay())
+            .whereLessThan(DATE, to.plusDays(1).startOfDay())
+            .orderBy(DATE, Query.Direction.DESCENDING)
+    }
+
+    /**
+     * Every freelance entry, paid or not, in real time (FR-B4, FR-B7). Freelance work is a handful of
+     * entries a month, so all of them are loaded and sorted on the phone; an equality filter alone needs
+     * only Firestore's automatic index. Served from the cache first, so it also works offline.
+     */
+    fun observeFreelanceEntries(): Flow<List<IncomeEntry>> = observe { entries ->
+        entries.whereEqualTo(SOURCE_TYPE, IncomeSourceType.FREELANCE.name)
+    }
+
+    /** Listens to [query] over the signed-in user's entries. The listener is removed when collection ends. */
+    private fun observe(query: (CollectionReference) -> Query): Flow<List<IncomeEntry>> = callbackFlow {
         val uid = auth.currentUser?.uid
         if (uid == null) {
             close(signedOut())
             return@callbackFlow
         }
-        val registration = entries(uid)
-            .whereGreaterThanOrEqualTo(DATE, from.startOfDay())
-            .whereLessThan(DATE, to.plusDays(1).startOfDay())
-            .orderBy(DATE, Query.Direction.DESCENDING)
+        val registration = query(entries(uid))
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     close(error.toRepositoryException())
