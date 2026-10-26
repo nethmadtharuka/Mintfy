@@ -14,6 +14,7 @@ import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
 import java.time.LocalDate
 import java.util.Locale
+import kotlin.math.abs
 
 // Plain Kotlin so it runs in JVM unit tests. Every rule here mirrors firestore.rules (incomeSources and
 // incomeEntries), so a write that passes these checks is not rejected by the server.
@@ -188,7 +189,8 @@ fun checkIncome(input: IncomeInput, source: IncomeSource, today: LocalDate): Inc
     val unpaidFreelance = isFreelance && status != IncomeStatus.RECEIVED
     return IncomeCheck.Valid(
         IncomeEntry(
-            source = source,
+            sourceId = source.id,
+            sourceType = type,
             status = status,
             date = input.date,
             currency = input.currency,
@@ -203,6 +205,32 @@ fun checkIncome(input: IncomeInput, source: IncomeSource, today: LocalDate): Inc
             dueDate = input.dueDate.takeIf { unpaidFreelance },
             note = input.note.trim().ifEmpty { null },
         )
+    )
+}
+
+/**
+ * The form input that [checkIncome] turns back into [entry], for editing a saved entry (FR-C5).
+ * Crypto amounts are shown without their sign, with the loss chip selected; salary is split into base and bonus;
+ * a foreign-currency entry keeps the LKR amount that was actually credited rather than re-suggesting one.
+ */
+fun incomeInputFor(entry: IncomeEntry): IncomeInput {
+    val total = abs(entry.originalAmountCents)
+    val bonus = entry.bonusAmountCents
+    val isLkr = entry.currency == BASE_CURRENCY
+    return IncomeInput(
+        amount = formatCents(entry.baseAmountCents ?: (total - (bonus ?: 0L))),
+        bonus = bonus?.let(::formatCents).orEmpty(),
+        currency = entry.currency,
+        rate = if (isLkr) "" else entry.exchangeRate.stripTrailingZeros().toPlainString(),
+        lkrAmount = if (isLkr) "" else formatCents(abs(entry.lkrAmountCents)),
+        isLoss = entry.originalAmountCents < 0,
+        status = entry.status,
+        date = entry.date,
+        client = entry.client.orEmpty(),
+        project = entry.project.orEmpty(),
+        milestone = entry.milestone.orEmpty(),
+        dueDate = entry.dueDate,
+        note = entry.note.orEmpty(),
     )
 }
 

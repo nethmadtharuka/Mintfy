@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -308,6 +309,24 @@ fun SelectChip(label: String, selected: Boolean, onClick: () -> Unit) {
     ) {
         Text(label, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(14.dp, 8.dp))
     }
+}
+
+/** Material 3 confirmation before an entry is deleted (FR-H5). Delete is red so it is never tapped by habit. */
+@Composable
+fun ConfirmDeleteDialog(what: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Delete this $what?", style = MaterialTheme.typography.titleLarge) },
+        text = { Text("It will be removed from your history and totals. This can't be undone.") },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text("Delete", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel", style = MaterialTheme.typography.labelLarge) }
+        },
+    )
 }
 
 /** Looks like the Figma "Input" but opens a picker instead of the keyboard. */

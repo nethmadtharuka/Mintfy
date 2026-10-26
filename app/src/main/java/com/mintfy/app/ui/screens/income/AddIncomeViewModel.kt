@@ -1,12 +1,16 @@
 package com.mintfy.app.ui.screens.income
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.mintfy.app.data.model.IncomeEntry
 import com.mintfy.app.data.model.IncomeSource
 import com.mintfy.app.data.model.IncomeSourceType
 import com.mintfy.app.data.model.IncomeStatus
 import com.mintfy.app.data.repository.IncomeRepository
 import com.mintfy.app.data.repository.IncomeSourceRepository
+import com.mintfy.app.data.repository.SaveOutcome
+import com.mintfy.app.ui.navigation.Routes
 import com.mintfy.app.ui.screens.expense.parseAmountToCents
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -47,6 +51,8 @@ data class AddIncomeUiState(
     val isSaving: Boolean = false,
     val isSaved: Boolean = false,
     val savedOffline: Boolean = false,
+    val isDeleted: Boolean = false,
+    val isEditing: Boolean = false,
     val sourceDialog: NewSourceDialogState? = null,
 )
 
@@ -72,16 +78,27 @@ private data class IncomeForm(
     val isSaving: Boolean = false,
     val isSaved: Boolean = false,
     val savedOffline: Boolean = false,
+    val isDeleted: Boolean = false,
+    val isEditing: Boolean = false,
+    val isLoadingEntry: Boolean = false,
+    val loadedDate: LocalDate? = null, // the saved date, so an unchanged one is not rewritten
     val sourceDialog: NewSourceDialogState? = null,
 )
 
+/**
+ * Add income, or edit a saved entry when opened with an entry ID (FR-C5).
+ * When editing, the source is fixed: the rules forbid changing an entry's source type.
+ */
 @HiltViewModel
 class AddIncomeViewModel @Inject constructor(
+    savedStateHandle: SavedStateHandle,
     private val sourceRepository: IncomeSourceRepository,
     private val incomeRepository: IncomeRepository,
 ) : ViewModel() {
 
-    private val form = MutableStateFlow(IncomeForm())
+    private val editId: String? = savedStateHandle[Routes.ARG_ID]
+
+    private val form = MutableStateFlow(IncomeForm(isEditing = editId != null, isLoadingEntry = editId != null))
 
     // null means "still loading"; an empty list means loaded but the user has no sources yet.
     private val sources: StateFlow<List<IncomeSource>?> = sourceRepository.observeSources()
@@ -93,9 +110,20 @@ class AddIncomeViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     val uiState: StateFlow<AddIncomeUiState> = combine(form, sources, ::buildState)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), buildState(IncomeForm(), null))
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), buildState(form.value, null))
+
+    init {
+        if (editId != null) {
+            viewModelScope.launch {
+                incomeRepository.getEntry(editId)
+                    .onSuccess { entry -> form.update { it.filledFrom(entry) } }
+                    .onFailure { e -> form.update { it.copy(isLoadingEntry = false, error = e.message ?: GENERIC_ERROR) } }
+            }
+        }
+    }
 
     fun onSourceSelected(id: String) = form.update {
+        if (it.isEditing) return@update it // the source of a saved entry can't change
         // Currency, status and the crypto sign depend on the source, so start them fresh.
         it.copy(
             sourceId = id, currency = null, status = IncomeStatus.RECEIVED, isLoss = false,
@@ -144,12 +172,14 @@ class AddIncomeViewModel @Inject constructor(
     fun save() {
         val current = form.value
         // Checked on the form itself, not the derived uiState, so a fast double tap cannot save twice.
-        if (current.isSaving || current.isSaved) return
+        if (current.isSaving || current.isSaved || current.isLoadingEntry) return
 
         val state = buildState(current, sources.value)
         val source = state.selectedSource
         if (source == null) {
-            form.update { it.copy(error = "Add an income source first.") }
+            val message =
+                if (current.isEditing) "This entry's income source is no longer available." else "Add an income source first."
+            form.update { it.copy(error = message) }
             return
         }
         when (val check = checkIncome(state.input, source, LocalDate.now())) {
@@ -157,16 +187,35 @@ class AddIncomeViewModel @Inject constructor(
             is IncomeCheck.Valid -> {
                 form.update { it.copy(isSaving = true, errors = IncomeFieldErrors(), error = null) }
                 viewModelScope.launch {
-                    incomeRepository.addEntry(check.entry)
-                        .onSuccess { outcome ->
-                            form.update { it.copy(isSaving = false, isSaved = true, savedOffline = outcome.pendingSync) }
-                        }
-                        .onFailure { e ->
-                            form.update { it.copy(isSaving = false, error = e.message ?: GENERIC_ERROR) }
-                        }
+                    val result = if (editId == null) {
+                        incomeRepository.addEntry(check.entry)
+                    } else {
+                        incomeRepository.updateEntry(editId, check.entry, dateChanged = check.entry.date != current.loadedDate)
+                    }
+                    finish(result)
                 }
             }
         }
+    }
+
+    /** Deletes the entry being edited. The screen asks for confirmation first (FR-H5). */
+    fun delete() {
+        val id = editId ?: return
+        val current = form.value
+        if (current.isSaving || current.isSaved || current.isLoadingEntry) return
+        form.update { it.copy(isSaving = true, error = null) }
+        viewModelScope.launch { finish(incomeRepository.deleteEntry(id), deleted = true) }
+    }
+
+    /** On success the screen sees isSaved and closes; on failure everything typed stays on the form. */
+    private fun finish(result: Result<SaveOutcome>, deleted: Boolean = false) {
+        result
+            .onSuccess { outcome ->
+                form.update {
+                    it.copy(isSaving = false, isSaved = true, savedOffline = outcome.pendingSync, isDeleted = deleted)
+                }
+            }
+            .onFailure { e -> form.update { it.copy(isSaving = false, error = e.message ?: GENERIC_ERROR) } }
     }
 
     fun openNewSource() = form.update { it.copy(sourceDialog = NewSourceDialogState()) }
@@ -221,7 +270,7 @@ class AddIncomeViewModel @Inject constructor(
         const val GENERIC_ERROR = "Something went wrong. Please try again."
 
         fun buildState(f: IncomeForm, sources: List<IncomeSource>?): AddIncomeUiState {
-            val list = sources.orEmpty()
+            val list = if (f.isEditing) sources.orEmpty().filter { it.id == f.sourceId } else sources.orEmpty()
             // The user's choice, else the first source (salary sorts first).
             val source = list.firstOrNull { it.id == f.sourceId } ?: list.firstOrNull()
             val currency = f.currency ?: source?.defaultCurrency ?: BASE_CURRENCY
@@ -249,7 +298,7 @@ class AddIncomeViewModel @Inject constructor(
             )
             return AddIncomeUiState(
                 sources = list,
-                isLoadingSources = sources == null,
+                isLoadingSources = sources == null || f.isLoadingEntry,
                 selectedSource = source,
                 statusOptions = source?.let { statusOptions(it.type) } ?: listOf(IncomeStatus.RECEIVED),
                 // Keep a source's own currency selectable even if it is not one of the usual three.
@@ -261,7 +310,33 @@ class AddIncomeViewModel @Inject constructor(
                 isSaving = f.isSaving,
                 isSaved = f.isSaved,
                 savedOffline = f.savedOffline,
+                isDeleted = f.isDeleted,
+                isEditing = f.isEditing,
                 sourceDialog = f.sourceDialog,
+            )
+        }
+
+        /** Puts a saved entry on the form. A foreign-currency entry keeps the LKR amount actually credited. */
+        fun IncomeForm.filledFrom(entry: IncomeEntry): IncomeForm {
+            val input = incomeInputFor(entry)
+            return copy(
+                sourceId = entry.sourceId,
+                amount = input.amount,
+                bonus = input.bonus,
+                currency = input.currency,
+                rate = input.rate,
+                lkrAmount = input.lkrAmount,
+                lkrEdited = input.currency != BASE_CURRENCY,
+                isLoss = input.isLoss,
+                status = input.status,
+                date = input.date,
+                client = input.client,
+                project = input.project,
+                milestone = input.milestone,
+                dueDate = input.dueDate,
+                note = input.note,
+                isLoadingEntry = false,
+                loadedDate = entry.date,
             )
         }
 
