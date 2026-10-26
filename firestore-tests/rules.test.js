@@ -11,6 +11,7 @@ import {
 } from '@firebase/rules-unit-testing';
 import {
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
   serverTimestamp,
@@ -249,6 +250,83 @@ describe('Income entries (FR-B3 to FR-B9, FR-E6)', () => {
     await assertFails(
       setDoc(entry('i7'), salary({ ...noSalaryParts, originalAmountCents: -100, lkrAmountCents: -100 })),
     );
+  });
+});
+
+// ---------- FR-C5: editing and deleting from History ----------
+// The app edits with updateDoc: it never sends createdAt, refreshes updatedAt, and removes fields that
+// no longer apply with deleteField() (IncomeRepository.updateEntry, ExpenseRepository.updateExpense).
+describe('History: edit and delete (FR-C5)', () => {
+  const entry = (id) => doc(alice(), `users/alice/incomeEntries/${id}`);
+  const invoice = (overrides = {}) => salary({
+    ...noSalaryParts,
+    sourceId: 'src_freelance',
+    sourceType: 'FREELANCE',
+    status: 'INVOICED',
+    date: at('2026-11-05T12:00:00+05:30'),
+    originalAmountCents: 4500000,
+    lkrAmountCents: 4500000,
+    client: 'Lanka Bites',
+    dueDate: at('2026-11-05T12:00:00+05:30'),
+    ...overrides,
+  });
+
+  test('invoice marked received, with its due date removed, is accepted (FR-B4)', async () => {
+    await assertSucceeds(setDoc(entry('inv'), invoice()));
+    await assertSucceeds(updateDoc(entry('inv'), {
+      status: 'RECEIVED',
+      date: at('2026-10-26T12:00:00+05:30'),
+      dueDate: deleteField(),
+      updatedAt: serverTimestamp(),
+    }));
+    const saved = (await getDoc(entry('inv'))).data();
+    if (saved.dueDate !== undefined || saved.status !== 'RECEIVED') throw new Error('update not applied');
+  });
+
+  test('a stale bonus left behind after editing the salary is rejected', async () => {
+    await assertSucceeds(setDoc(entry('pay'), salary()));
+    await assertFails(updateDoc(entry('pay'), {
+      originalAmountCents: 12000000, lkrAmountCents: 12000000, baseAmountCents: 12000000,
+      updatedAt: serverTimestamp(),
+    }));
+  });
+
+  test('clearing the bonus removes it and is accepted', async () => {
+    await assertSucceeds(setDoc(entry('pay'), salary()));
+    await assertSucceeds(updateDoc(entry('pay'), {
+      originalAmountCents: 12000000, lkrAmountCents: 12000000, baseAmountCents: 12000000,
+      bonusAmountCents: deleteField(),
+      updatedAt: serverTimestamp(),
+    }));
+  });
+
+  test("an entry's source type cannot be changed", async () => {
+    await assertSucceeds(setDoc(entry('inv'), invoice()));
+    await assertFails(updateDoc(entry('inv'), { sourceType: 'OTHER', updatedAt: serverTimestamp() }));
+  });
+
+  test('an edit must refresh updatedAt', async () => {
+    await assertSucceeds(setDoc(entry('pay'), salary()));
+    await assertFails(updateDoc(entry('pay'), { status: 'RECEIVED' }));
+  });
+
+  test('clearing an expense note removes it and is accepted', async () => {
+    const ref = doc(alice(), 'users/alice/expenses/e1');
+    await assertSucceeds(setDoc(ref, expense()));
+    await assertSucceeds(updateDoc(ref, { note: deleteField(), updatedAt: serverTimestamp() }));
+  });
+
+  test('owner can delete an income entry', async () => {
+    await assertSucceeds(setDoc(entry('pay'), salary()));
+    await assertSucceeds(deleteDoc(entry('pay')));
+  });
+
+  test("another user cannot edit or delete someone else's entries", async () => {
+    await assertSucceeds(setDoc(entry('pay'), salary()));
+    await assertSucceeds(setDoc(doc(alice(), 'users/alice/expenses/e1'), expense()));
+    await assertFails(updateDoc(doc(bob(), 'users/alice/incomeEntries/pay'), { note: 'x', updatedAt: serverTimestamp() }));
+    await assertFails(deleteDoc(doc(bob(), 'users/alice/incomeEntries/pay')));
+    await assertFails(deleteDoc(doc(bob(), 'users/alice/expenses/e1')));
   });
 });
 

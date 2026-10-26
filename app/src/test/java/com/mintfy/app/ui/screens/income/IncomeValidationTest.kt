@@ -228,4 +228,53 @@ class IncomeValidationTest {
         assertEquals("LKR 500.50 below your expected salary", salaryDifferenceLabel(11_949_950, 12_000_000))
         assertEquals("Matches your expected salary", salaryDifferenceLabel(12_000_000, 12_000_000))
     }
+
+    /**
+     * FR-C5: opening a saved entry for editing and saving it unchanged must give back the same entry.
+     * The rate goes through a Double, as it does when read from Firestore.
+     */
+    private fun assertRoundTrip(input: IncomeInput, source: IncomeSource) {
+        val saved = valid(input, source)
+        val read = saved.copy(id = "doc1", exchangeRate = BigDecimal.valueOf(saved.exchangeRate.toDouble()))
+        assertEquals(saved, valid(incomeInputFor(read), source))
+    }
+
+    @Test
+    fun editingFormRoundTripsEverySourceType() {
+        assertRoundTrip(IncomeInput(amount = "120,000", bonus = "12,500", date = today, note = "October"), salary)
+        assertRoundTrip(IncomeInput(amount = "120000", date = today), salary) // no bonus
+        assertRoundTrip(
+            IncomeInput(amount = "52.30", currency = "USD", rate = "298.75", lkrAmount = "15,540", date = today),
+            adsense,
+        )
+        assertRoundTrip(
+            IncomeInput(amount = "60", currency = "USDT", rate = "300", lkrAmount = "18000", isLoss = true, date = today),
+            crypto,
+        )
+        assertRoundTrip(
+            IncomeInput(
+                amount = "45,000", status = IncomeStatus.INVOICED, date = today.plusDays(10),
+                client = "Lanka Bites", project = "WordPress site", milestone = "Milestone 2", dueDate = today.plusDays(12),
+            ),
+            freelance,
+        )
+    }
+
+    @Test
+    fun editingFormShowsStoredValues() {
+        val loss = valid(
+            IncomeInput(amount = "60", currency = "USDT", rate = "300", lkrAmount = "18,000", isLoss = true, date = today),
+            crypto,
+        )
+        val input = incomeInputFor(loss.copy(exchangeRate = BigDecimal.valueOf(300.0)))
+        assertEquals("60", input.amount) // shown without the sign; the loss chip carries it
+        assertTrue(input.isLoss)
+        assertEquals("300", input.rate)
+        assertEquals("18,000", input.lkrAmount) // what was credited, not re-suggested
+
+        val pay = valid(IncomeInput(amount = "120,000", bonus = "8,000", date = today), salary)
+        assertEquals("120,000", incomeInputFor(pay).amount)
+        assertEquals("8,000", incomeInputFor(pay).bonus)
+        assertEquals("", incomeInputFor(pay).rate) // LKR has no rate field
+    }
 }

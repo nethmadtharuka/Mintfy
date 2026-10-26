@@ -10,13 +10,14 @@ import java.time.LocalDate
 enum class IncomeStatus { EXPECTED, INVOICED, RECEIVED }
 
 /**
- * A new document for users/{uid}/incomeEntries: one receipt, or one freelance amount still owed.
+ * A document at users/{uid}/incomeEntries: one receipt, or one freelance amount still owed.
  * Money is whole cents. Every total uses [lkrAmountCents]; the original amount, currency and the
  * rate entered at transfer are kept so any figure can be audited (FR-B5, NFR-05).
  * Crypto amounts are signed; everything else is positive. Validated before saving (IncomeValidation).
  */
 data class IncomeEntry(
-    val source: IncomeSource, // sourceId and sourceType are copied from it
+    val sourceId: String,
+    val sourceType: IncomeSourceType, // copied from the source; the rules keep it fixed
     val status: IncomeStatus,
     val date: LocalDate, // date received; for an unpaid entry, when payment is expected
     val currency: String,
@@ -30,4 +31,5 @@ data class IncomeEntry(
     val milestone: String? = null,
     val dueDate: LocalDate? = null,
     val note: String? = null,
+    val id: String? = null, // null until saved
 )

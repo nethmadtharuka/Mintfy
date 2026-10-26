@@ -35,6 +35,7 @@ import com.mintfy.app.data.model.IncomeSource
 import com.mintfy.app.data.model.IncomeSourceType
 import com.mintfy.app.data.model.IncomeStatus
 import com.mintfy.app.ui.components.ChipGroup
+import com.mintfy.app.ui.components.ConfirmDeleteDialog
 import com.mintfy.app.ui.components.ErrorBanner
 import com.mintfy.app.ui.components.MintfyDatePicker
 import com.mintfy.app.ui.components.MintfyTextField
@@ -45,6 +46,7 @@ import com.mintfy.app.ui.components.SecondaryButton
 import com.mintfy.app.ui.components.SectionLabel
 import com.mintfy.app.ui.components.SelectChip
 import com.mintfy.app.ui.components.dateLabel
+import com.mintfy.app.ui.screens.expense.offlineMessage
 import com.mintfy.app.ui.theme.MintfyTheme
 import java.time.LocalDate
 
@@ -59,9 +61,7 @@ fun AddIncomeScreen(
 
     LaunchedEffect(state.isSaved) {
         if (!state.isSaved) return@LaunchedEffect
-        if (state.savedOffline) {
-            Toast.makeText(context, "Saved on this phone. It will sync when you're back online.", Toast.LENGTH_LONG).show()
-        }
+        if (state.savedOffline) Toast.makeText(context, offlineMessage(state.isDeleted), Toast.LENGTH_LONG).show()
         onSaved()
     }
 
@@ -86,6 +86,7 @@ data class AddIncomeActions(
     val onDueDateSelected: (LocalDate?) -> Unit = {},
     val onNoteChange: (String) -> Unit = {},
     val onSave: () -> Unit = {},
+    val onDelete: () -> Unit = {},
     val onOpenNewSource: () -> Unit = {},
     val onDismissNewSource: () -> Unit = {},
     val onNewSourceNameChange: (String) -> Unit = {},
@@ -111,6 +112,7 @@ private fun AddIncomeViewModel.toActions() = AddIncomeActions(
     onDueDateSelected = ::onDueDateSelected,
     onNoteChange = ::onNoteChange,
     onSave = ::save,
+    onDelete = ::delete,
     onOpenNewSource = ::openNewSource,
     onDismissNewSource = ::dismissNewSource,
     onNewSourceNameChange = ::onNewSourceNameChange,
@@ -129,13 +131,15 @@ private fun AddIncomeViewModel.toActions() = AddIncomeActions(
 fun AddIncomeContent(state: AddIncomeUiState, actions: AddIncomeActions, onCancel: () -> Unit) {
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
     var showDueDatePicker by rememberSaveable { mutableStateOf(false) }
+    var confirmDelete by rememberSaveable { mutableStateOf(false) }
     val source = state.selectedSource
     val input = state.input
     val errors = state.errors
     val enabled = !state.isSaving
     val isUnpaid = input.status != IncomeStatus.RECEIVED
 
-    Scaffold(topBar = { MintfyTopBar("Add income", onBack = onCancel) }) { innerPadding ->
+    val title = if (state.isEditing) "Edit income" else "Add income"
+    Scaffold(topBar = { MintfyTopBar(title, onBack = onCancel) }) { innerPadding ->
         Column(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier
@@ -153,9 +157,12 @@ fun AddIncomeContent(state: AddIncomeUiState, actions: AddIncomeActions, onCance
                 options = state.sources.map { it.id to it.name },
                 selectedId = source?.id,
                 onSelect = actions.onSourceSelected,
-                trailing = { SelectChip(label = "+ New source", selected = false, onClick = actions.onOpenNewSource) },
+                // A saved entry keeps its source (the rules fix its type), so no new source is offered.
+                trailing = if (state.isEditing) null else {
+                    { SelectChip(label = "+ New source", selected = false, onClick = actions.onOpenNewSource) }
+                },
             )
-            if (!state.isLoadingSources && source == null) {
+            if (!state.isLoadingSources && source == null && !state.isEditing) {
                 // FR-H1: say what to do next; the "+ New source" chip above is the action.
                 Text(
                     "Add your first income source, such as your salary or AdSense.",
@@ -293,9 +300,23 @@ fun AddIncomeContent(state: AddIncomeUiState, actions: AddIncomeActions, onCance
 
             Hint("Only received income counts toward savings.")
             ErrorBanner(state.error)
-            PrimaryButton("Save income", onClick = actions.onSave, isLoading = state.isSaving)
+            PrimaryButton(if (state.isEditing) "Save changes" else "Save income", onClick = actions.onSave, isLoading = state.isSaving)
             SecondaryButton("Cancel", onClick = onCancel, enabled = enabled)
+            if (state.isEditing) {
+                SecondaryButton("Delete income", onClick = { confirmDelete = true }, enabled = enabled)
+            }
         }
+    }
+
+    if (confirmDelete) {
+        ConfirmDeleteDialog(
+            what = "income entry",
+            onConfirm = {
+                confirmDelete = false
+                actions.onDelete()
+            },
+            onDismiss = { confirmDelete = false },
+        )
     }
 
     if (showDatePicker) {

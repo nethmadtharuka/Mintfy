@@ -1,5 +1,6 @@
 package com.mintfy.app.ui.screens.expense
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -21,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
@@ -30,6 +32,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mintfy.app.data.model.DefaultReferenceData
 import com.mintfy.app.data.model.SpendingType
 import com.mintfy.app.ui.components.ChipGroup
+import com.mintfy.app.ui.components.ConfirmDeleteDialog
 import com.mintfy.app.ui.components.ErrorBanner
 import com.mintfy.app.ui.components.MintfyDatePicker
 import com.mintfy.app.ui.components.MintfyTextField
@@ -49,10 +52,13 @@ fun AddExpenseScreen(
     viewModel: AddExpenseViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
 
-    // Saving is instant (it works offline), so close the screen as soon as the ViewModel reports it.
+    // Adding is instant (it works offline), so close the screen as soon as the ViewModel reports it.
     LaunchedEffect(state.isSaved) {
-        if (state.isSaved) onSaved()
+        if (!state.isSaved) return@LaunchedEffect
+        if (state.savedOffline) Toast.makeText(context, offlineMessage(state.isDeleted), Toast.LENGTH_LONG).show()
+        onSaved()
     }
 
     AddExpenseContent(
@@ -64,8 +70,14 @@ fun AddExpenseScreen(
         onNoteChange = viewModel::onNoteChange,
         onSave = viewModel::save,
         onCancel = onBack,
+        onDelete = viewModel::delete,
     )
 }
+
+/** Shown when a change is kept on the phone because the server could not be reached. */
+fun offlineMessage(deleted: Boolean) =
+    if (deleted) "Deleted on this phone. It will sync when you're back online."
+    else "Saved on this phone. It will sync when you're back online."
 
 /**
  * Figma "05 Add expense". Stateless: it only draws [state] and reports what the user does.
@@ -82,15 +94,18 @@ fun AddExpenseContent(
     onNoteChange: (String) -> Unit,
     onSave: () -> Unit,
     onCancel: () -> Unit,
+    onDelete: () -> Unit = {},
     focusAmountOnOpen: Boolean = true,
 ) {
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
+    var confirmDelete by rememberSaveable { mutableStateOf(false) }
     val amountFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) {
         if (focusAmountOnOpen) amountFocus.requestFocus() // Figma annotation: amount field has focus on open
     }
 
-    Scaffold(topBar = { MintfyTopBar("Add expense", onBack = onCancel) }) { innerPadding ->
+    val title = if (state.isEditing) "Edit expense" else "Add expense"
+    Scaffold(topBar = { MintfyTopBar(title, onBack = onCancel) }) { innerPadding ->
         Column(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier
@@ -144,15 +159,31 @@ fun AddExpenseContent(
                 onImeAction = onSave,
             )
 
-            Text(
-                "Defaults to today. Record in three interactions or fewer.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (!state.isEditing) {
+                Text(
+                    "Defaults to today. Record in three interactions or fewer.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             ErrorBanner(state.error)
-            PrimaryButton("Save expense", onClick = onSave)
-            SecondaryButton("Cancel", onClick = onCancel)
+            PrimaryButton(if (state.isEditing) "Save changes" else "Save expense", onClick = onSave, isLoading = state.isSaving)
+            SecondaryButton("Cancel", onClick = onCancel, enabled = !state.isSaving)
+            if (state.isEditing) {
+                SecondaryButton("Delete expense", onClick = { confirmDelete = true }, enabled = !state.isSaving)
+            }
         }
+    }
+
+    if (confirmDelete) {
+        ConfirmDeleteDialog(
+            what = "expense",
+            onConfirm = {
+                confirmDelete = false
+                onDelete()
+            },
+            onDismiss = { confirmDelete = false },
+        )
     }
 
     if (showDatePicker) {
