@@ -101,9 +101,12 @@ fun SavingsGoalsScreen(
                     ) {
                         items(
                             items = state.goals,
-                            key = { it.id },
-                        ) { goal ->
-                            SavingsGoalCard(goal = goal)
+                            key = { it.goal.id },
+                        ) { item ->
+                            SavingsGoalCard(
+                                goal = item.goal,
+                                progress = item.progress,
+                            )
                         }
                     }
                 }
@@ -112,17 +115,13 @@ fun SavingsGoalsScreen(
     }
 }
 
-@Composable
-private fun SavingsGoalCard(goal: SavingsGoal) {
-    val today = LocalDate.now()
 
-    val progress = SavingsGoalCalculations.calculateProgress(
-        targetAmountCents = goal.targetAmountCents,
-        currentSavedCents = goal.startingSavedCents,
-        deadline = goal.deadline,
-        today = today,
-        actualMonthlySavingsCents = 0L,
-    )
+@Composable
+private fun SavingsGoalCard(
+    goal: SavingsGoal,
+    progress: com.mintfy.app.data.domain.savingsgoal.SavingsGoalProgress,
+) {
+    val today = LocalDate.now()
 
     val moneyFormat = NumberFormat.getCurrencyInstance(
         Locale("en", "LK"),
@@ -133,7 +132,8 @@ private fun SavingsGoalCard(goal: SavingsGoal) {
 
     val statusText = when {
         goal.status == SavingsGoalStatus.ARCHIVED -> "Archived"
-        progress.status.name == "ACHIEVED" -> "Achieved"
+        goal.status == SavingsGoalStatus.ACHIEVED ||
+                progress.status.name == "ACHIEVED" -> "Achieved"
         progress.status.name == "BEHIND" -> "Behind"
         else -> "On Track"
     }
