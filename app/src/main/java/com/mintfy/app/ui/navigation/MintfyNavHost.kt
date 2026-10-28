@@ -23,7 +23,7 @@ import com.mintfy.app.ui.screens.dashboard.DashboardScreen
 import com.mintfy.app.ui.screens.expense.AddExpenseScreen
 import com.mintfy.app.ui.screens.income.AddIncomeScreen
 import com.mintfy.app.ui.screens.goal.CreateGoalScreen
-
+import com.mintfy.app.ui.screens.goal.SavingsGoalsScreen
 object Routes {
     const val LOGIN = "login"
     const val REGISTER = "register"
@@ -31,6 +31,7 @@ object Routes {
     const val ADD_EXPENSE = "add_expense"
     const val ADD_INCOME = "add_income"
     const val CREATE_GOAL = "create_goal"
+    const val SAVINGS_GOALS = "savings_goals"
 }
 
 private val authRoutes = setOf(Routes.LOGIN, Routes.REGISTER)
@@ -86,12 +87,17 @@ fun MintfyNavHost(
                 email = signedIn.email,
                 onAddExpense = { navController.navigate(Routes.ADD_EXPENSE) { launchSingleTop = true } },
                 onAddIncome = { navController.navigate(Routes.ADD_INCOME) { launchSingleTop = true } },
-                onSignOut = authViewModel::signOut,
                 onCreateSavingsGoal = {
                     navController.navigate(Routes.CREATE_GOAL) {
                         launchSingleTop = true
                     }
                 },
+                onViewSavingsGoals = {
+                    navController.navigate(Routes.SAVINGS_GOALS) {
+                        launchSingleTop = true
+                    }
+                },
+                onSignOut = authViewModel::signOut,
             )
         }
         composable(Routes.ADD_EXPENSE) {
@@ -120,6 +126,23 @@ fun MintfyNavHost(
             CreateGoalScreen(
                 onBack = backToDashboard,
                 onSaved = backToDashboard
+            )
+        }
+        composable(Routes.SAVINGS_GOALS) {
+            if (session !is Session.SignedIn) return@composable
+
+            SavingsGoalsScreen(
+                onBack = {
+                    navController.popBackStack(
+                        Routes.DASHBOARD,
+                        inclusive = false,
+                    )
+                },
+                onCreateGoal = {
+                    navController.navigate(Routes.CREATE_GOAL) {
+                        launchSingleTop = true
+                    }
+                },
             )
         }
     }

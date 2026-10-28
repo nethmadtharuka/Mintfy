@@ -22,7 +22,7 @@ import com.mintfy.app.ui.theme.MintfyTheme
 
 /** Placeholder home screen until the dashboard is built; uses the Figma top bar and card styles. */
 @Composable
-fun DashboardScreen(email: String?, onAddExpense: () -> Unit, onAddIncome: () -> Unit, onCreateSavingsGoal: () -> Unit, onSignOut: () -> Unit) {
+fun DashboardScreen(email: String?, onAddExpense: () -> Unit, onAddIncome: () -> Unit, onCreateSavingsGoal: () -> Unit,onViewSavingsGoals: () -> Unit, onSignOut: () -> Unit) {
     Scaffold(
         topBar = { MintfyTopBar("Dashboard") },
         floatingActionButton = { AddExpenseButton(onClick = onAddExpense) },
@@ -48,6 +48,10 @@ fun DashboardScreen(email: String?, onAddExpense: () -> Unit, onAddIncome: () ->
                 onClick = onCreateSavingsGoal
             )
             SecondaryButton("Sign out", onClick = onSignOut)
+            SecondaryButton(
+                "View savings goals",
+                onClick = onViewSavingsGoals,
+            )
         }
     }
 }
@@ -74,6 +78,6 @@ private fun AddExpenseButton(onClick: () -> Unit) {
 @Composable
 fun DashboardScreenPreview() {
     MintfyTheme {
-        DashboardScreen(email = "kavindu@example.com", onAddExpense = {}, onAddIncome = {}, onCreateSavingsGoal = {}, onSignOut = {})
+        DashboardScreen(email = "kavindu@example.com", onAddExpense = {}, onAddIncome = {}, onCreateSavingsGoal = {}, onViewSavingsGoals = {},onSignOut = {})
     }
 }
