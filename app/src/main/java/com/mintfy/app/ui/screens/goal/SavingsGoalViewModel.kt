@@ -20,7 +20,6 @@ data class CreateGoalUiState(
     val name: String = "",
     val targetAmount: String = "",
     val startingSavedAmount: String = "",
-    val startDate: LocalDate = LocalDate.now(),
     val deadline: LocalDate = LocalDate.now().plusMonths(12),
     val nameError: String? = null,
     val targetAmountError: String? = null,
@@ -40,7 +39,11 @@ class SavingsGoalViewModel @Inject constructor(
 
     fun onNameChange(value: String) {
         _uiState.update {
-            it.copy(name = value, nameError = null, errorMessage = null)
+            it.copy(
+                name = value,
+                nameError = null,
+                errorMessage = null,
+            )
         }
     }
 
@@ -64,16 +67,6 @@ class SavingsGoalViewModel @Inject constructor(
         }
     }
 
-    fun onStartDateChange(value: LocalDate) {
-        _uiState.update {
-            it.copy(
-                startDate = value,
-                deadlineError = null,
-                errorMessage = null,
-            )
-        }
-    }
-
     fun onDeadlineChange(value: LocalDate) {
         _uiState.update {
             it.copy(
@@ -91,9 +84,12 @@ class SavingsGoalViewModel @Inject constructor(
 
         val name = current.name.trim()
         val targetCents = parseAmountToCents(current.targetAmount)
+
         val startingSavedCents = parseAmountToCents(
             current.startingSavedAmount.ifBlank { "0" }
         )
+
+        val today = LocalDate.now()
 
         val nameError = when {
             name.isBlank() -> "Enter a goal name."
@@ -102,25 +98,35 @@ class SavingsGoalViewModel @Inject constructor(
         }
 
         val targetError = when {
-            current.targetAmount.isBlank() -> "Enter a target amount."
-            targetCents == null -> "Enter a valid amount with up to 2 decimal places."
-            targetCents <= 0L -> "The target amount must be greater than zero."
+            current.targetAmount.isBlank() ->
+                "Enter a target amount."
+
+            targetCents == null ->
+                "Enter a valid amount with up to 2 decimal places."
+
+            targetCents <= 0L ->
+                "The target amount must be greater than zero."
+
             else -> null
         }
 
         val savedError = when {
             startingSavedCents == null ->
                 "Enter a valid amount with up to 2 decimal places."
+
             startingSavedCents < 0L ->
                 "The amount already saved cannot be negative."
+
             targetCents != null && startingSavedCents > targetCents ->
                 "The amount already saved cannot exceed the target."
+
             else -> null
         }
 
         val deadlineError = when {
-            !current.deadline.isAfter(current.startDate) ->
-                "The deadline must be after the start date."
+            !current.deadline.isAfter(today) ->
+                "The deadline must be after today."
+
             else -> null
         }
 
@@ -147,19 +153,26 @@ class SavingsGoalViewModel @Inject constructor(
             name = name,
             targetAmountCents = requireNotNull(targetCents),
             startingSavedCents = requireNotNull(startingSavedCents),
-            startDate = current.startDate,
+            startDate = today,
             deadline = current.deadline,
             status = SavingsGoalStatus.ACTIVE,
         )
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isSaving = true, errorMessage = null) }
+            _uiState.update {
+                it.copy(
+                    isSaving = true,
+                    errorMessage = null,
+                )
+            }
 
             val result = savingsGoalRepository.addGoal(goal)
 
             result.fold(
                 onSuccess = {
-                    _uiState.update { it.copy(isSaving = false) }
+                    _uiState.update {
+                        it.copy(isSaving = false)
+                    }
                     onSaved()
                 },
                 onFailure = { error ->
@@ -176,15 +189,17 @@ class SavingsGoalViewModel @Inject constructor(
     }
 
     /**
-     * Converts an LKR amount to integer cents without floating-point rounding.
-     * Blank input is invalid here; the caller supplies "0" for an optional
-     * starting amount that the user leaves blank.
+     * Converts an LKR amount into integer cents.
+     * Floating-point arithmetic is not used.
      */
     private fun parseAmountToCents(value: String): Long? {
         val cleaned = value.trim().replace(",", "")
 
         if (cleaned.isBlank()) return null
-        if (!cleaned.matches(Regex("""\d+(\.\d{1,2})?"""))) return null
+
+        if (!cleaned.matches(Regex("""\d+(\.\d{1,2})?"""))) {
+            return null
+        }
 
         return try {
             BigDecimal(cleaned)

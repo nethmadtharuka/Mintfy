@@ -1,10 +1,8 @@
 
 package com.mintfy.app.ui.screens.goal
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -54,13 +52,16 @@ fun CreateGoalScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
-    var showStartDatePicker by remember { mutableStateOf(false) }
-    var showDeadlinePicker by remember { mutableStateOf(false) }
+    var showDeadlinePicker by remember {
+        mutableStateOf(false)
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Create savings goal") },
+                title = {
+                    Text("Create savings goal")
+                },
                 navigationIcon = {
                     TextButton(
                         onClick = onBack,
@@ -72,6 +73,7 @@ fun CreateGoalScreen(
             )
         },
     ) { innerPadding ->
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -81,27 +83,23 @@ fun CreateGoalScreen(
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(
-                text = "Plan something worth saving for.",
-                style = MaterialTheme.typography.titleMedium,
-            )
-
-            Text(
-                text = "Enter your target and deadline to calculate how much you need to save.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
 
             OutlinedTextField(
                 value = state.name,
                 onValueChange = viewModel::onNameChange,
-                label = { Text("Goal name") },
-                placeholder = { Text("e.g. MacBook") },
+                label = {
+                    Text("Goal name")
+                },
+                placeholder = {
+                    Text("e.g. MacBook")
+                },
                 singleLine = true,
                 enabled = !state.isSaving,
                 isError = state.nameError != null,
                 supportingText = {
-                    state.nameError?.let { Text(it) }
+                    state.nameError?.let {
+                        Text(it)
+                    }
                 },
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -109,13 +107,19 @@ fun CreateGoalScreen(
             OutlinedTextField(
                 value = state.targetAmount,
                 onValueChange = viewModel::onTargetAmountChange,
-                label = { Text("Target amount (LKR)") },
-                placeholder = { Text("e.g. 490000.00") },
+                label = {
+                    Text("Target amount (LKR)")
+                },
+                placeholder = {
+                    Text("e.g. 490000.00")
+                },
                 singleLine = true,
                 enabled = !state.isSaving,
                 isError = state.targetAmountError != null,
                 supportingText = {
-                    state.targetAmountError?.let { Text(it) }
+                    state.targetAmountError?.let {
+                        Text(it)
+                    }
                 },
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Decimal,
@@ -126,8 +130,12 @@ fun CreateGoalScreen(
             OutlinedTextField(
                 value = state.startingSavedAmount,
                 onValueChange = viewModel::onStartingSavedAmountChange,
-                label = { Text("Amount already saved (LKR)") },
-                placeholder = { Text("e.g. 11200.00") },
+                label = {
+                    Text("Amount already saved (LKR)")
+                },
+                placeholder = {
+                    Text("e.g. 11200.00")
+                },
                 singleLine = true,
                 enabled = !state.isSaving,
                 isError = state.startingSavedAmountError != null,
@@ -143,33 +151,24 @@ fun CreateGoalScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = "Start date",
-                    style = MaterialTheme.typography.labelLarge,
-                )
-
-                OutlinedButton(
-                    onClick = { showStartDatePicker = true },
-                    enabled = !state.isSaving,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(state.startDate.format(goalDateFormatter))
-                }
-            }
-
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 Text(
                     text = "Deadline",
                     style = MaterialTheme.typography.labelLarge,
                 )
 
                 OutlinedButton(
-                    onClick = { showDeadlinePicker = true },
+                    onClick = {
+                        showDeadlinePicker = true
+                    },
                     enabled = !state.isSaving,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text(state.deadline.format(goalDateFormatter))
+                    Text(
+                        state.deadline.format(goalDateFormatter)
+                    )
                 }
 
                 state.deadlineError?.let {
@@ -181,12 +180,6 @@ fun CreateGoalScreen(
                 }
             }
 
-            Text(
-                text = "Only received income will count toward your actual monthly savings.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
             state.errorMessage?.let {
                 Text(
                     text = it,
@@ -196,7 +189,9 @@ fun CreateGoalScreen(
             }
 
             Button(
-                onClick = { viewModel.saveGoal(onSaved) },
+                onClick = {
+                    viewModel.saveGoal(onSaved)
+                },
                 enabled = !state.isSaving,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -207,65 +202,38 @@ fun CreateGoalScreen(
                         modifier = Modifier.height(22.dp),
                         strokeWidth = 2.dp,
                     )
-                    Spacer(Modifier.padding(horizontal = 4.dp))
+
+                    Spacer(
+                        Modifier.padding(horizontal = 4.dp)
+                    )
+
                     Text("Saving...")
                 } else {
                     Text("Save goal")
                 }
             }
-
-            OutlinedButton(
-                onClick = onBack,
-                enabled = !state.isSaving,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Cancel")
-            }
-        }
-    }
-
-    if (showStartDatePicker) {
-        val pickerState = rememberDatePickerState(
-            initialSelectedDateMillis = state.startDate.toUtcMillis(),
-        )
-
-        DatePickerDialog(
-            onDismissRequest = { showStartDatePicker = false },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        pickerState.selectedDateMillis?.let { millis ->
-                            viewModel.onStartDateChange(millis.toLocalDateUtc())
-                        }
-                        showStartDatePicker = false
-                    },
-                ) {
-                    Text("Select")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showStartDatePicker = false }) {
-                    Text("Cancel")
-                }
-            },
-        ) {
-            DatePicker(state = pickerState)
         }
     }
 
     if (showDeadlinePicker) {
         val pickerState = rememberDatePickerState(
-            initialSelectedDateMillis = state.deadline.toUtcMillis(),
+            initialSelectedDateMillis =
+                state.deadline.toUtcMillis(),
         )
 
         DatePickerDialog(
-            onDismissRequest = { showDeadlinePicker = false },
+            onDismissRequest = {
+                showDeadlinePicker = false
+            },
             confirmButton = {
                 TextButton(
                     onClick = {
                         pickerState.selectedDateMillis?.let { millis ->
-                            viewModel.onDeadlineChange(millis.toLocalDateUtc())
+                            viewModel.onDeadlineChange(
+                                millis.toLocalDateUtc()
+                            )
                         }
+
                         showDeadlinePicker = false
                     },
                 ) {
@@ -273,18 +241,26 @@ fun CreateGoalScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDeadlinePicker = false }) {
+                TextButton(
+                    onClick = {
+                        showDeadlinePicker = false
+                    },
+                ) {
                     Text("Cancel")
                 }
             },
         ) {
-            DatePicker(state = pickerState)
+            DatePicker(
+                state = pickerState,
+            )
         }
     }
 }
 
 private fun LocalDate.toUtcMillis(): Long =
-    atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+    atStartOfDay(ZoneOffset.UTC)
+        .toInstant()
+        .toEpochMilli()
 
 private fun Long.toLocalDateUtc(): LocalDate =
     Instant.ofEpochMilli(this)
