@@ -12,14 +12,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.Card
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -27,13 +25,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.mintfy.app.data.domain.savingsgoal.SavingsGoalCalculations
+import com.mintfy.app.data.domain.savingsgoal.GoalProgressStatus
+import com.mintfy.app.data.domain.savingsgoal.SavingsGoalProgress
 import com.mintfy.app.data.model.SavingsGoal
-import com.mintfy.app.data.model.SavingsGoalStatus
+import java.math.BigDecimal
 import java.text.NumberFormat
-import java.time.LocalDate
-import java.time.temporal.ChronoUnit
 import java.util.Locale
+
+private val lkrFormatter: NumberFormat =
+    NumberFormat.getCurrencyInstance(Locale("en", "LK"))
+
+private fun formatLkr(amountCents: Long): String =
+    lkrFormatter.format(BigDecimal.valueOf(amountCents, 2))
 
 @Composable
 fun SavingsGoalsScreen(
@@ -54,6 +57,7 @@ fun SavingsGoalsScreen(
                 TextButton(onClick = onBack) {
                     Text("Back")
                 }
+
                 Text(
                     text = "Savings Goals",
                     style = MaterialTheme.typography.titleLarge,
@@ -61,12 +65,14 @@ fun SavingsGoalsScreen(
             }
         },
     ) { padding ->
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
                 .padding(16.dp),
         ) {
+
             Button(
                 onClick = onCreateGoal,
                 modifier = Modifier.fillMaxWidth(),
@@ -83,7 +89,8 @@ fun SavingsGoalsScreen(
 
                 state.errorMessage != null -> {
                     Text(
-                        text = state.errorMessage!!,
+                        text = state.errorMessage
+                            ?: "Unable to load savings goals.",
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
@@ -115,27 +122,17 @@ fun SavingsGoalsScreen(
     }
 }
 
-
 @Composable
 private fun SavingsGoalCard(
     goal: SavingsGoal,
-    progress: com.mintfy.app.data.domain.savingsgoal.SavingsGoalProgress,
+    progress: SavingsGoalProgress,
 ) {
-    val today = LocalDate.now()
-
-    val moneyFormat = NumberFormat.getCurrencyInstance(
-        Locale("en", "LK"),
-    )
-
-    fun formatLkr(cents: Long): String =
-        moneyFormat.format(cents / 100.0)
-
-    val statusText = when {
-        goal.status == SavingsGoalStatus.ARCHIVED -> "Archived"
-        goal.status == SavingsGoalStatus.ACHIEVED ||
-                progress.status.name == "ACHIEVED" -> "Achieved"
-        progress.status.name == "BEHIND" -> "Behind"
-        else -> "On Track"
+    val statusText = when (progress.status) {
+        GoalProgressStatus.ON_TRACK -> "On Track"
+        GoalProgressStatus.BEHIND,
+        GoalProgressStatus.ACHIEVED -> "Behind".takeIf {
+            progress.status == GoalProgressStatus.BEHIND
+        } ?: "On Track"
     }
 
     Card(
@@ -149,67 +146,38 @@ private fun SavingsGoalCard(
                 style = MaterialTheme.typography.titleMedium,
             )
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(12.dp))
 
-            Text("Status: $statusText")
+            Text(
+                "Amount saved: ${formatLkr(progress.currentSavedCents)}"
+            )
+
+            Text(
+                "Target amount: ${formatLkr(goal.targetAmountCents)}"
+            )
+
+            Text(
+                "Remaining amount: ${formatLkr(progress.remainingAmountCents)}"
+            )
+
+            Text(
+                "Deadline: ${goal.deadline}"
+            )
+
+            Text(
+                "Required monthly saving: ${
+                    progress.requiredMonthlySavingsCents?.let {
+                        formatLkr(it)
+                    } ?: "Deadline reached"
+                }"
+            )
 
             Spacer(Modifier.height(8.dp))
 
             Text(
-                "${formatLkr(progress.currentSavedCents)} saved of " +
-                        formatLkr(goal.targetAmountCents),
+                text = "Status: $statusText",
+                style = MaterialTheme.typography.bodyLarge,
             )
-
-            Spacer(Modifier.height(8.dp))
-
-            LinearProgressIndicator(
-                progress = {
-                    (progress.progressPercentage / 100.0)
-                        .toFloat()
-                        .coerceIn(0f, 1f)
-                },
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            Spacer(Modifier.height(8.dp))
-
-            Text(
-                "Progress: ${"%.1f".format(progress.progressPercentage)}%",
-            )
-
-            Text(
-                "Remaining: ${formatLkr(progress.remainingAmountCents)}",
-            )
-
-            Text("Deadline: ${goal.deadline}")
-
-            val daysRemaining = ChronoUnit.DAYS.between(
-                today,
-                goal.deadline,
-            )
-
-            Text(
-                when {
-                    progress.remainingAmountCents == 0L ->
-                        "Target reached!"
-
-                    daysRemaining < 0L ->
-                        "Deadline passed"
-
-                    daysRemaining == 0L ->
-                        "Deadline is today"
-
-                    else ->
-                        "$daysRemaining days remaining"
-                },
-            )
-
-            progress.requiredMonthlySavingsCents?.let { monthly ->
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Required monthly savings: ${formatLkr(monthly)}",
-                )
-            }
         }
     }
 }
