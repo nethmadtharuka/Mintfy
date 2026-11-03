@@ -110,4 +110,58 @@ class SavingsGoalCalculationsTest {
         Assert.assertEquals(0L, result.requiredMonthlySavingsCents)
         Assert.assertEquals(GoalProgressStatus.ACHIEVED, result.status)
     }
+
+    @Test
+    fun calculateMonthsRemaining_returnsZeroOnDeadline() {
+        val result = SavingsGoalCalculations.calculateMonthsRemaining(
+            today = LocalDate.of(2026, 11, 3),
+            deadline = LocalDate.of(2026, 11, 3)
+        )
+
+        Assert.assertEquals(0, result)
+    }
+
+    @Test
+    fun calculateMonthsRemaining_countsPartialMonthAsOne() {
+        val result = SavingsGoalCalculations.calculateMonthsRemaining(
+            today = LocalDate.of(2026, 11, 3),
+            deadline = LocalDate.of(2026, 11, 10)
+        )
+
+        Assert.assertEquals(1, result)
+    }
+
+    @Test
+    fun calculateMonthsRemaining_returnsZeroForPastDeadline() {
+        val result = SavingsGoalCalculations.calculateMonthsRemaining(
+            today = LocalDate.of(2026, 11, 3),
+            deadline = LocalDate.of(2026, 10, 3)
+        )
+
+        Assert.assertEquals(0, result)
+    }
+
+    @Test
+    fun calculateRequiredMonthlySavings_returnsZeroWhenNothingRemains() {
+        val result = SavingsGoalCalculations.calculateRequiredMonthlySavings(
+            remainingAmountCents = 0L,
+            monthsRemaining = 12
+        )
+
+        Assert.assertEquals(0L, result)
+    }
+
+    @Test
+    fun calculateProgress_returnsBehindWhenMonthlySavingsAreNegative() {
+        val result = SavingsGoalCalculations.calculateProgress(
+            targetAmountCents = 49000000L,
+            currentSavedCents = 1120000L,
+            deadline = LocalDate.of(2027, 11, 3),
+            today = LocalDate.of(2026, 11, 3),
+            actualMonthlySavingsCents = -100000L
+        )
+
+        Assert.assertEquals(GoalProgressStatus.BEHIND, result.status)
+    }
+
 }
