@@ -1,91 +1,303 @@
+
 package com.mintfy.app.ui.screens.dashboard
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.mintfy.app.data.model.SavingsGoalProgress
 import com.mintfy.app.ui.components.MintfyCard
 import com.mintfy.app.ui.components.MintfyTopBar
 import com.mintfy.app.ui.components.SecondaryButton
+import com.mintfy.app.ui.screens.goal.GoalViewModel
+import com.mintfy.app.ui.screens.goal.GoalUiState
 import com.mintfy.app.ui.theme.MintfyTheme
+import java.math.BigDecimal
 
-/** Placeholder home screen until the dashboard is built; uses the Figma top bar and card styles. */
 @Composable
 fun DashboardScreen(
     email: String?,
+    goalViewModel: GoalViewModel,
     onAddExpense: () -> Unit,
     onAddIncome: () -> Unit,
     onHistory: () -> Unit,
     onSignOut: () -> Unit,
     onSavingsGoal: () -> Unit,
-    // FR-B7: the unpaid invoice total, supplied by the invoices feature so the dashboard needn't load it.
     unpaidInvoices: @Composable () -> Unit = {},
 ) {
+
+    val goalState by goalViewModel.uiState.collectAsState()
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    // Refresh date-dependent goal calculations when
+    // the Dashboard becomes active again.
+    LaunchedEffect(lifecycleOwner) {
+
+        val observer = LifecycleEventObserver { _, event ->
+
+            if (event == Lifecycle.Event.ON_RESUME) {
+                goalViewModel.refresh()
+            }
+        }
+
+        lifecycleOwner.lifecycle.addObserver(observer)
+
+        goalViewModel.refresh()
+
+        try {
+            kotlinx.coroutines.awaitCancellation()
+        } finally {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     Scaffold(
-        topBar = { MintfyTopBar("Dashboard") },
-        floatingActionButton = { AddExpenseButton(onClick = onAddExpense) },
+        topBar = {
+            MintfyTopBar("Dashboard")
+        },
+
+        floatingActionButton = {
+            AddExpenseButton(onClick = onAddExpense)
+        }
+
     ) { innerPadding ->
+
         Column(
             verticalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.fillMaxSize().padding(innerPadding).padding(16.dp),
+
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp)
         ) {
+
+            // Signed-in user information.
             if (email != null) {
+
                 MintfyCard {
+
                     Text(
                         "Signed in as",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Text(email, style = MaterialTheme.typography.titleMedium)
+
+                    Text(
+                        email,
+                        style = MaterialTheme.typography.titleMedium
+                    )
                 }
             }
+
+            // Existing unpaid freelance invoices section.
             unpaidInvoices()
-            // Until the Income tab exists, this is the way into Add income.
-            SecondaryButton("Add income", onClick = onAddIncome)
-            // Until the bottom navigation exists, this is the way into History.
-            SecondaryButton("History", onClick = onHistory)
+
+            // FR-F4: Savings Goal Progress Card.
+            when {
+
+                goalState.isLoading && goalState.goal == null -> {
+                    Text("Loading savings goal...")
+                }
+
+                goalState.goal != null &&
+                        goalState.progress != null -> {
+
+                    SavingsGoalProgressCard(
+                        progress = goalState.progress!!,
+                        onViewGoal = onSavingsGoal
+                    )
+                }
+
+                goalState.goal == null -> {
+
+                    // No goal has been created yet.
+                    // The existing button opens the goal screen.
+                    MintfyCard {
+
+                        Text(
+                            "No savings goal yet",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+
+                        Text(
+                            "Create a savings goal to track your progress."
+                        )
+
+                        SecondaryButton(
+                            text = "Create savings goal",
+                            onClick = onSavingsGoal
+                        )
+                    }
+                }
+            }
+
+            // Existing dashboard navigation actions.
             SecondaryButton(
-                "Savings Goal",
+                text = "Add income",
+                onClick = onAddIncome
+            )
+
+            SecondaryButton(
+                text = "History",
+                onClick = onHistory
+            )
+
+            SecondaryButton(
+                text = "Savings Goal",
                 onClick = onSavingsGoal
             )
-            SecondaryButton("Sign out", onClick = onSignOut)
+
+            SecondaryButton(
+                text = "Sign out",
+                onClick = onSignOut
+            )
         }
     }
 }
 
-/** Figma "FAB Add expense": green, 28dp radius, black 28 Bold "+". Read out as "Add expense". */
+/**
+ * FR-F4:
+ * Displays the current savings goal progress on the Dashboard.
+ */
 @Composable
-private fun AddExpenseButton(onClick: () -> Unit) {
+private fun SavingsGoalProgressCard(
+    progress: SavingsGoalProgress,
+    onViewGoal: () -> Unit
+) {
+
+    MintfyCard {
+
+        // Goal name.
+        Text(
+            text = progress.goal.name,
+            style = MaterialTheme.typography.titleLarge
+        )
+
+        // Current saved amount.
+        Text(
+            text = "Amount saved",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Text(
+            text = formatGoalLkr(progress.currentSavedCents),
+            style = MaterialTheme.typography.headlineSmall
+        )
+
+        // Visual progress indicator.
+        LinearProgressIndicator(
+            progress = {
+                progress.progressPercent / 100f
+            },
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Text(
+            text = "${progress.progressPercent}% completed",
+            style = MaterialTheme.typography.bodySmall
+        )
+
+        // Required monthly saving.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+
+            Text(
+                text = "Required monthly saving",
+                style = MaterialTheme.typography.bodyMedium
+            )
+
+            Text(
+                text = formatGoalLkr(
+                    progress.requiredMonthlySavingCents
+                ),
+                style = MaterialTheme.typography.titleMedium
+            )
+        }
+
+        // On Track / Behind status.
+        Text(
+            text = if (progress.isOnTrack) {
+                "On Track"
+            } else {
+                "Behind"
+            },
+
+            color = if (progress.isOnTrack) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.error
+            },
+
+            style = MaterialTheme.typography.titleMedium
+        )
+
+        // Navigate to the complete Savings Goal screen.
+        SecondaryButton(
+            text = "View goal",
+            onClick = onViewGoal
+        )
+    }
+}
+
+/**
+ * Format integer LKR cents into a readable currency amount.
+ */
+private fun formatGoalLkr(amountCents: Long): String {
+
+    val amount = BigDecimal.valueOf(amountCents, 2)
+
+    return "LKR ${String.format("%,.2f", amount)}"
+}
+
+/** Figma Add Expense floating action button. */
+@Composable
+private fun AddExpenseButton(
+    onClick: () -> Unit
+) {
+
     FloatingActionButton(
         onClick = onClick,
         shape = MaterialTheme.shapes.extraLarge,
         containerColor = MaterialTheme.colorScheme.primary,
         contentColor = MaterialTheme.colorScheme.onPrimary,
-        modifier = Modifier.semantics { contentDescription = "Add expense" },
+
+        modifier = Modifier.semantics {
+            contentDescription = "Add expense"
+        }
+
     ) {
+
         Text(
             "+",
             style = MaterialTheme.typography.headlineMedium,
-            modifier = Modifier.clearAndSetSemantics {},
+            modifier = Modifier.clearAndSetSemantics {}
         )
-    }
-}
-
-@Preview
-@Composable
-fun DashboardScreenPreview() {
-    MintfyTheme {
-        DashboardScreen(email = "kavindu@example.com", onAddExpense = {}, onAddIncome = {}, onHistory = {},onSavingsGoal = {}, onSignOut = {})
     }
 }
