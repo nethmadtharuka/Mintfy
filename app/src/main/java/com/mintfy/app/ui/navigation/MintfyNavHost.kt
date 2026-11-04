@@ -1,3 +1,4 @@
+
 package com.mintfy.app.ui.navigation
 
 import android.net.Uri
@@ -19,10 +20,12 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+
 import com.mintfy.app.ui.screens.auth.AuthViewModel
 import com.mintfy.app.ui.screens.auth.LoginScreen
 import com.mintfy.app.ui.screens.auth.RegisterScreen
 import com.mintfy.app.ui.screens.auth.Session
+
 import com.mintfy.app.ui.screens.dashboard.DashboardScreen
 import com.mintfy.app.ui.screens.expense.AddExpenseScreen
 import com.mintfy.app.ui.screens.history.EntryKind
@@ -31,7 +34,12 @@ import com.mintfy.app.ui.screens.income.AddIncomeScreen
 import com.mintfy.app.ui.screens.invoices.InvoicesScreen
 import com.mintfy.app.ui.screens.invoices.UnpaidInvoicesCard
 
+import com.mintfy.app.ui.screens.goal.GoalViewModel
+import com.mintfy.app.ui.screens.goal.SavingsGoalScreen
+
+
 object Routes {
+
     const val LOGIN = "login"
     const val REGISTER = "register"
     const val DASHBOARD = "dashboard"
@@ -40,122 +48,310 @@ object Routes {
     const val HISTORY = "history"
     const val INVOICES = "invoices"
 
-    /** Optional entry ID: with it, the add screens edit that saved entry instead (FR-C5). */
+    /** Optional entry ID for editing an existing entry. */
     const val ARG_ID = "id"
 
-    fun editExpense(id: String) = "$ADD_EXPENSE?$ARG_ID=${Uri.encode(id)}"
-    fun editIncome(id: String) = "$ADD_INCOME?$ARG_ID=${Uri.encode(id)}"
+    const val SAVINGS_GOAL = "savings_goal"
+
+    fun editExpense(id: String) =
+        "$ADD_EXPENSE?$ARG_ID=${Uri.encode(id)}"
+
+    fun editIncome(id: String) =
+        "$ADD_INCOME?$ARG_ID=${Uri.encode(id)}"
 }
 
-private val optionalId = listOf(navArgument(Routes.ARG_ID) { type = NavType.StringType; nullable = true })
 
-private val authRoutes = setOf(Routes.LOGIN, Routes.REGISTER)
+private val optionalId = listOf(
+    navArgument(Routes.ARG_ID) {
+        type = NavType.StringType
+        nullable = true
+    }
+)
+
+private val authRoutes = setOf(
+    Routes.LOGIN,
+    Routes.REGISTER
+)
+
 
 @Composable
 fun MintfyNavHost(
-    // Called outside any destination, so it is scoped to the activity and outlives navigation.
+    // Activity-scoped authentication ViewModel.
     authViewModel: AuthViewModel = hiltViewModel(),
 ) {
+
     val session by authViewModel.session.collectAsStateWithLifecycle()
 
     if (session == Session.Loading) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator()
+        }
+
         return
     }
 
     val navController = rememberNavController()
-    val startDestination = remember { if (session is Session.SignedIn) Routes.DASHBOARD else Routes.LOGIN }
 
-    // Follow sign-in and sign-out wherever they happen. Clearing the back stack means the
-    // dashboard can't be reached with Back once signed out, and the login screen can't once signed in.
-    LaunchedEffect(session) {
-        val route = navController.currentDestination?.route
-        when {
-            session is Session.SignedIn && route in authRoutes -> navController.replaceAll(Routes.DASHBOARD)
-            session == Session.SignedOut && route !in authRoutes -> navController.replaceAll(Routes.LOGIN)
+    val startDestination = remember {
+        if (session is Session.SignedIn) {
+            Routes.DASHBOARD
+        } else {
+            Routes.LOGIN
         }
     }
 
-    NavHost(navController = navController, startDestination = startDestination) {
+    // Handle authentication changes.
+    LaunchedEffect(session) {
+
+        val route = navController.currentDestination?.route
+
+        when {
+
+            session is Session.SignedIn &&
+                    route in authRoutes -> {
+
+                navController.replaceAll(Routes.DASHBOARD)
+            }
+
+            session == Session.SignedOut &&
+                    route !in authRoutes -> {
+
+                navController.replaceAll(Routes.LOGIN)
+            }
+        }
+    }
+
+
+    NavHost(
+        navController = navController,
+        startDestination = startDestination
+    ) {
+
         composable(Routes.LOGIN) {
+
             LoginScreen(
                 viewModel = authViewModel,
+
                 onRegisterClick = {
                     authViewModel.clearErrors()
-                    navController.navigate(Routes.REGISTER) { launchSingleTop = true }
+
+                    navController.navigate(Routes.REGISTER) {
+                        launchSingleTop = true
+                    }
                 },
             )
         }
         composable(Routes.REGISTER) {
+
             RegisterScreen(
                 viewModel = authViewModel,
+
                 onSignInClick = {
                     authViewModel.clearErrors()
                     navController.popBackStack()
                 },
             )
         }
+
         composable(Routes.DASHBOARD) {
-            // Never render signed-in content without a session, even for the frame before the redirect.
-            val signedIn = session as? Session.SignedIn ?: return@composable
+
+            // Never render signed-in content without a session.
+            val signedIn = session as? Session.SignedIn
+                ?: return@composable
+
+            // Obtain Savings Goal ViewModel using Hilt.
+            val goalViewModel: GoalViewModel = hiltViewModel()
+
             DashboardScreen(
+
                 email = signedIn.email,
-                onAddExpense = { navController.navigate(Routes.ADD_EXPENSE) { launchSingleTop = true } },
-                onAddIncome = { navController.navigate(Routes.ADD_INCOME) { launchSingleTop = true } },
-                onHistory = { navController.navigate(Routes.HISTORY) { launchSingleTop = true } },
-                onSignOut = authViewModel::signOut,
-                unpaidInvoices = {
-                    UnpaidInvoicesCard(onViewInvoices = { navController.navigate(Routes.INVOICES) { launchSingleTop = true } })
-                },
-            )
-        }
-        composable(Routes.INVOICES) { entry ->
-            if (session !is Session.SignedIn) return@composable
-            InvoicesScreen(
-                onBack = navController.closer(entry),
-                // Editing, deleting and changing the amount reuse the Add income form, like History does.
-                onOpenInvoice = { id -> navController.navigate(Routes.editIncome(id)) { launchSingleTop = true } },
-                onAddIncome = { navController.navigate(Routes.ADD_INCOME) { launchSingleTop = true } },
-            )
-        }
-        composable(Routes.HISTORY) { entry ->
-            if (session !is Session.SignedIn) return@composable
-            HistoryScreen(
-                onBack = navController.closer(entry),
-                onOpenEntry = { row ->
-                    val route = when (row.kind) {
-                        EntryKind.EXPENSE -> Routes.editExpense(row.id)
-                        EntryKind.INCOME -> Routes.editIncome(row.id)
+
+                // FR-F4: Pass goal data to Dashboard.
+                goalViewModel = goalViewModel,
+
+                onAddExpense = {
+                    navController.navigate(Routes.ADD_EXPENSE) {
+                        launchSingleTop = true
                     }
-                    navController.navigate(route) { launchSingleTop = true }
                 },
-                onAddExpense = { navController.navigate(Routes.ADD_EXPENSE) { launchSingleTop = true } },
-                onAddIncome = { navController.navigate(Routes.ADD_INCOME) { launchSingleTop = true } },
+
+                onAddIncome = {
+                    navController.navigate(Routes.ADD_INCOME) {
+                        launchSingleTop = true
+                    }
+                },
+
+                onHistory = {
+                    navController.navigate(Routes.HISTORY) {
+                        launchSingleTop = true
+                    }
+                },
+
+                onSavingsGoal = {
+                    navController.navigate(Routes.SAVINGS_GOAL) {
+                        launchSingleTop = true
+                    }
+                },
+
+                onSignOut = authViewModel::signOut,
+
+                unpaidInvoices = {
+                    UnpaidInvoicesCard(
+                        onViewInvoices = {
+                            navController.navigate(Routes.INVOICES) {
+                                launchSingleTop = true
+                            }
+                        }
+                    )
+                },
             )
         }
-        composable("${Routes.ADD_EXPENSE}?${Routes.ARG_ID}={${Routes.ARG_ID}}", arguments = optionalId) { entry ->
-            if (session !is Session.SignedIn) return@composable
-            val close = navController.closer(entry)
-            AddExpenseScreen(onBack = close, onSaved = close)
+
+        composable(Routes.INVOICES) { entry ->
+
+            if (session !is Session.SignedIn) {
+                return@composable
+            }
+
+            InvoicesScreen(
+
+                onBack = navController.closer(entry),
+
+                onOpenInvoice = { id ->
+
+                    navController.navigate(Routes.editIncome(id)) {
+                        launchSingleTop = true
+                    }
+                },
+
+                onAddIncome = {
+
+                    navController.navigate(Routes.ADD_INCOME) {
+                        launchSingleTop = true
+                    }
+                },
+            )
         }
-        composable("${Routes.ADD_INCOME}?${Routes.ARG_ID}={${Routes.ARG_ID}}", arguments = optionalId) { entry ->
-            if (session !is Session.SignedIn) return@composable
+
+        composable(Routes.HISTORY) { entry ->
+
+            if (session !is Session.SignedIn) {
+                return@composable
+            }
+
+            HistoryScreen(
+
+                onBack = navController.closer(entry),
+
+                onOpenEntry = { row ->
+
+                    val route = when (row.kind) {
+
+                        EntryKind.EXPENSE ->
+                            Routes.editExpense(row.id)
+
+                        EntryKind.INCOME ->
+                            Routes.editIncome(row.id)
+                    }
+
+                    navController.navigate(route) {
+                        launchSingleTop = true
+                    }
+                },
+
+                onAddExpense = {
+                    navController.navigate(Routes.ADD_EXPENSE) {
+                        launchSingleTop = true
+                    }
+                },
+
+                onAddIncome = {
+                    navController.navigate(Routes.ADD_INCOME) {
+                        launchSingleTop = true
+                    }
+                },
+            )
+        }
+
+
+        composable(
+            "${Routes.ADD_EXPENSE}?${Routes.ARG_ID}={${Routes.ARG_ID}}",
+            arguments = optionalId
+        ) { entry ->
+
+            if (session !is Session.SignedIn) {
+                return@composable
+            }
+
             val close = navController.closer(entry)
-            AddIncomeScreen(onBack = close, onSaved = close)
+
+            AddExpenseScreen(
+                onBack = close,
+                onSaved = close
+            )
+        }
+
+        composable(
+            "${Routes.ADD_INCOME}?${Routes.ARG_ID}={${Routes.ARG_ID}}",
+            arguments = optionalId
+        ) { entry ->
+
+            if (session !is Session.SignedIn) {
+                return@composable
+            }
+
+            val close = navController.closer(entry)
+
+            AddIncomeScreen(
+                onBack = close,
+                onSaved = close
+            )
+        }
+        composable(Routes.SAVINGS_GOAL) { entry ->
+
+            if (session !is Session.SignedIn) {
+                return@composable
+            }
+
+            val goalViewModel: GoalViewModel = hiltViewModel()
+
+            SavingsGoalScreen(
+                viewModel = goalViewModel,
+                onBack = navController.closer(entry)
+            )
         }
     }
 }
 
+
 /**
- * Closes [entry], returning to whichever screen opened it (the dashboard, or History when editing).
- * Does nothing once [entry] is no longer on top, so it is safe if Back and Save both fire,
- * or if onSaved fires again after a rotation while isSaved is still true.
+ * Closes the current navigation entry.
+ * Returns to whichever screen opened it.
  */
-private fun NavHostController.closer(entry: NavBackStackEntry): () -> Unit = {
-    if (currentBackStackEntry == entry) popBackStack()
+private fun NavHostController.closer(
+    entry: NavBackStackEntry
+): () -> Unit = {
+
+    if (currentBackStackEntry == entry) {
+        popBackStack()
+    }
 }
 
-private fun NavHostController.replaceAll(route: String) = navigate(route) {
-    popUpTo(graph.id) { inclusive = true }
+
+/**
+ * Clears the navigation back stack when authentication changes.
+ */
+private fun NavHostController.replaceAll(
+    route: String
+) = navigate(route) {
+
+    popUpTo(graph.id) {
+        inclusive = true
+    }
+
     launchSingleTop = true
 }
