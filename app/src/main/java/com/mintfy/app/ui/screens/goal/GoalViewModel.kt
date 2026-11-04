@@ -204,6 +204,7 @@ class GoalViewModel @Inject constructor(
      */
     fun refresh() {
         val goal = _uiState.value.goal ?: return
+        financialDataJob?.cancel()
         observeFinancialData(goal)
     }
 

@@ -28,6 +28,7 @@ fun DashboardScreen(
     onAddIncome: () -> Unit,
     onHistory: () -> Unit,
     onSignOut: () -> Unit,
+    onSavingsGoal: () -> Unit,
     // FR-B7: the unpaid invoice total, supplied by the invoices feature so the dashboard needn't load it.
     unpaidInvoices: @Composable () -> Unit = {},
 ) {
@@ -54,6 +55,10 @@ fun DashboardScreen(
             SecondaryButton("Add income", onClick = onAddIncome)
             // Until the bottom navigation exists, this is the way into History.
             SecondaryButton("History", onClick = onHistory)
+            SecondaryButton(
+                "Savings Goal",
+                onClick = onSavingsGoal
+            )
             SecondaryButton("Sign out", onClick = onSignOut)
         }
     }
@@ -81,6 +86,6 @@ private fun AddExpenseButton(onClick: () -> Unit) {
 @Composable
 fun DashboardScreenPreview() {
     MintfyTheme {
-        DashboardScreen(email = "kavindu@example.com", onAddExpense = {}, onAddIncome = {}, onHistory = {}, onSignOut = {})
+        DashboardScreen(email = "kavindu@example.com", onAddExpense = {}, onAddIncome = {}, onHistory = {},onSavingsGoal = {}, onSignOut = {})
     }
 }

@@ -30,6 +30,8 @@ import com.mintfy.app.ui.screens.history.HistoryScreen
 import com.mintfy.app.ui.screens.income.AddIncomeScreen
 import com.mintfy.app.ui.screens.invoices.InvoicesScreen
 import com.mintfy.app.ui.screens.invoices.UnpaidInvoicesCard
+import com.mintfy.app.ui.screens.goal.GoalViewModel
+import com.mintfy.app.ui.screens.goal.SavingsGoalScreen
 
 object Routes {
     const val LOGIN = "login"
@@ -42,6 +44,8 @@ object Routes {
 
     /** Optional entry ID: with it, the add screens edit that saved entry instead (FR-C5). */
     const val ARG_ID = "id"
+
+    const val SAVINGS_GOAL = "savings_goal"
 
     fun editExpense(id: String) = "$ADD_EXPENSE?$ARG_ID=${Uri.encode(id)}"
     fun editIncome(id: String) = "$ADD_INCOME?$ARG_ID=${Uri.encode(id)}"
@@ -103,6 +107,11 @@ fun MintfyNavHost(
                 onAddExpense = { navController.navigate(Routes.ADD_EXPENSE) { launchSingleTop = true } },
                 onAddIncome = { navController.navigate(Routes.ADD_INCOME) { launchSingleTop = true } },
                 onHistory = { navController.navigate(Routes.HISTORY) { launchSingleTop = true } },
+                onSavingsGoal = {
+                    navController.navigate(Routes.SAVINGS_GOAL) {
+                        launchSingleTop = true
+                    }
+                },
                 onSignOut = authViewModel::signOut,
                 unpaidInvoices = {
                     UnpaidInvoicesCard(onViewInvoices = { navController.navigate(Routes.INVOICES) { launchSingleTop = true } })
@@ -142,6 +151,16 @@ fun MintfyNavHost(
             if (session !is Session.SignedIn) return@composable
             val close = navController.closer(entry)
             AddIncomeScreen(onBack = close, onSaved = close)
+        }
+        composable(Routes.SAVINGS_GOAL) { entry ->
+            if (session !is Session.SignedIn) return@composable
+
+            val goalViewModel: GoalViewModel = hiltViewModel()
+
+            SavingsGoalScreen(
+                viewModel = goalViewModel,
+                onBack = navController.closer(entry)
+            )
         }
     }
 }
