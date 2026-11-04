@@ -1,3 +1,4 @@
+
 package com.mintfy.app.data.repository
 
 import android.util.Log
@@ -12,7 +13,6 @@ import com.mintfy.app.data.model.SavingsGoal
 import com.mintfy.app.data.model.SavingsGoalStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -37,20 +37,11 @@ class SavingsGoalRepository @Inject constructor(
         private const val TAG = "SavingsGoalRepository"
     }
 
-    // ------------------------------------------------
-    // FIRESTORE REFERENCE
-    // ------------------------------------------------
-
     private fun goalDocument(uid: String) =
         firestore.collection("users")
             .document(uid)
             .collection("goals")
             .document("active")
-
-
-    // ------------------------------------------------
-    // OBSERVE SAVINGS GOAL
-    // ------------------------------------------------
 
     fun observeActiveGoal(): Flow<SavingsGoal?> = channelFlow {
 
@@ -71,8 +62,6 @@ class SavingsGoalRepository @Inject constructor(
             syncJob + Dispatchers.IO
         )
 
-        // Listen to Firestore changes.
-
         val registration = goalDocument(uid)
             .addSnapshotListener { snapshot, error ->
 
@@ -92,51 +81,30 @@ class SavingsGoalRepository @Inject constructor(
                         val goal = snapshot.toSavingsGoal()
 
                         if (goal != null) {
-
                             dao.upsert(
-                                SavingsGoalEntity.from(
-                                    goal,
-                                    uid
-                                )
+                                SavingsGoalEntity.from(goal, uid)
                             )
                         }
 
                     } else if (!snapshot.metadata.isFromCache) {
-
-                        // Delete cached goal only after a confirmed
-                        // server snapshot says the document is absent.
 
                         dao.deleteActiveGoal(uid)
                     }
                 }
             }
 
-        // Observe Room changes.
-
         val roomJob = launch {
-
             dao.observeActiveGoal(uid).collect { entity ->
-
-                send(
-                    entity?.toModel()
-                )
+                send(entity?.toModel())
             }
         }
 
         awaitClose {
-
             registration.remove()
-
             roomJob.cancel()
-
             syncJob.cancel()
         }
     }
-
-
-    // ------------------------------------------------
-    // CREATE SAVINGS GOAL
-    // ------------------------------------------------
 
     suspend fun createGoal(
         goal: SavingsGoal
@@ -145,8 +113,122 @@ class SavingsGoalRepository @Inject constructor(
         val uid = auth.currentUser?.uid
             ?: error("You're signed out. Please sign in again.")
 
+        validateGoal(goal)
+
+        val cachedGoal = dao.getActiveGoal(uid)
+
+        require(cachedGoal == null) {
+            "An active savings goal already exists."
+        }
+
+        dao.upsert(
+            SavingsGoalEntity.from(goal, uid)
+        )
+
+        val data = mapOf(
+            "name" to goal.name.trim(),
+            "targetAmountCents" to goal.targetAmountCents,
+            "startingSavedCents" to goal.startingSavedCents,
+            "startDate" to goal.startDate.toTimestamp(),
+            "deadline" to goal.deadline.toTimestamp(),
+            "status" to goal.status.name,
+            "createdAt" to FieldValue.serverTimestamp(),
+            "updatedAt" to FieldValue.serverTimestamp()
+        )
+
+        goalDocument(uid)
+            .set(data)
+            .addOnFailureListener { error ->
+                Log.e(
+                    TAG,
+                    "Savings goal synchronization failed",
+                    error
+                )
+            }
+    }
+
+    suspend fun updateGoal(
+        goal: SavingsGoal
+    ): Result<Unit> = runCatching {
+
+        val uid = auth.currentUser?.uid
+            ?: error("You're signed out. Please sign in again.")
+
+        validateGoal(goal)
+
+        val existingGoal = dao.getActiveGoal(uid)
+
+        require(existingGoal != null) {
+            "Savings goal does not exist."
+        }
+
+        dao.upsert(
+            SavingsGoalEntity.from(goal, uid)
+        )
+
+        val data = mapOf(
+            "name" to goal.name.trim(),
+            "targetAmountCents" to goal.targetAmountCents,
+            "startingSavedCents" to goal.startingSavedCents,
+            "startDate" to goal.startDate.toTimestamp(),
+            "deadline" to goal.deadline.toTimestamp(),
+            "status" to goal.status.name,
+            "updatedAt" to FieldValue.serverTimestamp()
+        )
+
+        goalDocument(uid)
+            .update(data)
+            .addOnFailureListener { error ->
+                Log.e(
+                    TAG,
+                    "Savings goal update synchronization failed",
+                    error
+                )
+            }
+    }
+
+    suspend fun deleteGoal(): Result<Unit> = runCatching {
+
+        val uid = auth.currentUser?.uid
+            ?: error("You're signed out. Please sign in again.")
+
+        val existingGoal = dao.getActiveGoal(uid)
+
+        require(existingGoal != null) {
+            "Savings goal does not exist."
+        }
+
+        dao.deleteActiveGoal(uid)
+
+        goalDocument(uid)
+            .delete()
+            .addOnFailureListener { error ->
+                Log.e(
+                    TAG,
+                    "Savings goal deletion synchronization failed",
+                    error
+                )
+            }
+    }
+
+    suspend fun retrySync(): Result<Unit> = runCatching {
+
+        val uid = auth.currentUser?.uid
+            ?: error("You're signed out. Please sign in again.")
+
+        goalDocument(uid)
+            .get(Source.SERVER)
+            .await()
+    }
+
+    private fun validateGoal(goal: SavingsGoal) {
+
         require(goal.name.isNotBlank()) {
             "Goal name cannot be empty."
+        }
+
+        require(goal.name.trim().length <= 60) {
+            "Goal name cannot exceed 60 characters."
         }
 
         require(goal.targetAmountCents > 0L) {
@@ -160,74 +242,7 @@ class SavingsGoalRepository @Inject constructor(
         require(goal.deadline.isAfter(goal.startDate)) {
             "Deadline must be after start date."
         }
-
-        // Prevent creating another goal when one is already cached.
-
-        val cachedGoal = dao.getActiveGoal(uid)
-
-        require(cachedGoal == null) {
-            "An active savings goal already exists."
-        }
-
-        // Save locally first.
-
-        dao.upsert(
-            SavingsGoalEntity.from(goal, uid)
-        )
-
-        // Save to Firestore.
-
-        val data = mapOf(
-
-            "name" to goal.name.trim(),
-
-            "targetAmountCents" to goal.targetAmountCents,
-
-            "startingSavedCents" to goal.startingSavedCents,
-
-            "startDate" to goal.startDate.toTimestamp(),
-
-            "deadline" to goal.deadline.toTimestamp(),
-
-            "status" to goal.status.name,
-
-            "createdAt" to FieldValue.serverTimestamp(),
-
-            "updatedAt" to FieldValue.serverTimestamp()
-        )
-
-        goalDocument(uid)
-            .set(data)
-            .addOnFailureListener { error ->
-
-                Log.e(
-                    TAG,
-                    "Savings goal synchronization failed",
-                    error
-                )
-            }
     }
-
-
-    // ------------------------------------------------
-    // RETRY SYNCHRONIZATION
-    // ------------------------------------------------
-
-    suspend fun retrySync(): Result<Unit> = runCatching {
-
-        val uid = auth.currentUser?.uid
-            ?: error("You're signed out. Please sign in again.")
-
-        goalDocument(uid)
-            .get(Source.SERVER)
-            .await()
-
-    }
-
-
-    // ------------------------------------------------
-    // FIRESTORE DOCUMENT TO MODEL
-    // ------------------------------------------------
 
     private fun com.google.firebase.firestore.DocumentSnapshot
             .toSavingsGoal(): SavingsGoal? {
@@ -247,22 +262,14 @@ class SavingsGoalRepository @Inject constructor(
             ?: return null
 
         return SavingsGoal(
-
             id = "active",
-
-            name = getString("name")
-                ?: return null,
-
+            name = getString("name") ?: return null,
             targetAmountCents = getLong("targetAmountCents")
                 ?: return null,
-
             startingSavedCents = getLong("startingSavedCents")
                 ?: return null,
-
             startDate = startDate,
-
             deadline = deadline,
-
             status = getString("status")
                 ?.let {
                     runCatching {
@@ -273,19 +280,12 @@ class SavingsGoalRepository @Inject constructor(
         )
     }
 
-
-    // ------------------------------------------------
-    // LOCALDATE TO FIREBASE TIMESTAMP
-    // ------------------------------------------------
-
     private fun LocalDate.toTimestamp(): Timestamp {
 
         val instant = atStartOfDay(
             ZoneId.systemDefault()
         ).toInstant()
 
-        return Timestamp(
-            Date.from(instant)
-        )
+        return Timestamp(Date.from(instant))
     }
 }

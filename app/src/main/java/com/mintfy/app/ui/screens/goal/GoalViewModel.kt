@@ -1,3 +1,4 @@
+
 package com.mintfy.app.ui.screens.goal
 
 import androidx.lifecycle.ViewModel
@@ -8,7 +9,6 @@ import com.mintfy.app.data.model.SavingsGoalProgress
 import com.mintfy.app.data.repository.ExpenseRepository
 import com.mintfy.app.data.repository.IncomeRepository
 import com.mintfy.app.data.repository.SavingsGoalRepository
-import com.mintfy.app.data.repository.toLocalDate
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Job
@@ -26,7 +26,8 @@ data class GoalUiState(
     val progress: SavingsGoalProgress? = null,
     val error: String? = null,
     val isSaving: Boolean = false,
-    val isRetrying: Boolean = false
+    val isRetrying: Boolean = false,
+    val isDeleting: Boolean = false
 )
 
 @HiltViewModel
@@ -51,10 +52,12 @@ class GoalViewModel @Inject constructor(
                 .catch { exception ->
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        error = exception.message ?: "Unable to load savings goal."
+                        error = exception.message
+                            ?: "Unable to load savings goal."
                     )
                 }
                 .collect { goal ->
+
                     financialDataJob?.cancel()
 
                     if (goal == null) {
@@ -67,6 +70,7 @@ class GoalViewModel @Inject constructor(
                             goal = goal,
                             error = null
                         )
+
                         observeFinancialData(goal)
                     }
                 }
@@ -75,7 +79,9 @@ class GoalViewModel @Inject constructor(
 
     private fun observeFinancialData(goal: SavingsGoal) {
         financialDataJob = viewModelScope.launch {
+
             val today = LocalDate.now()
+
             val monthStart = maxOf(
                 today.withDayOfMonth(1),
                 goal.startDate
@@ -126,7 +132,8 @@ class GoalViewModel @Inject constructor(
                     .filter { it.status == IncomeStatus.RECEIVED }
                     .sumOf { it.lkrAmountCents }
 
-                val expenseTotal = allExpenses.sumOf { it.amountCents }
+                val expenseTotal = allExpenses
+                    .sumOf { it.amountCents }
 
                 val receivedMonthlyIncome = monthlyIncome
                     .filter { it.status == IncomeStatus.RECEIVED }
@@ -168,6 +175,7 @@ class GoalViewModel @Inject constructor(
 
     fun createGoal(goal: SavingsGoal) {
         viewModelScope.launch {
+
             _uiState.value = _uiState.value.copy(
                 isSaving = true,
                 error = null
@@ -182,8 +190,43 @@ class GoalViewModel @Inject constructor(
         }
     }
 
+    fun updateGoal(goal: SavingsGoal) {
+        viewModelScope.launch {
+
+            _uiState.value = _uiState.value.copy(
+                isSaving = true,
+                error = null
+            )
+
+            val result = goalRepository.updateGoal(goal)
+
+            _uiState.value = _uiState.value.copy(
+                isSaving = false,
+                error = result.exceptionOrNull()?.message
+            )
+        }
+    }
+
+    fun deleteGoal() {
+        viewModelScope.launch {
+
+            _uiState.value = _uiState.value.copy(
+                isDeleting = true,
+                error = null
+            )
+
+            val result = goalRepository.deleteGoal()
+
+            _uiState.value = _uiState.value.copy(
+                isDeleting = false,
+                error = result.exceptionOrNull()?.message
+            )
+        }
+    }
+
     fun retry() {
         viewModelScope.launch {
+
             _uiState.value = _uiState.value.copy(
                 isRetrying = true,
                 error = null
@@ -198,17 +241,18 @@ class GoalViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Call when the screen resumes so date-dependent calculations
-     * are refreshed after the app has been in the background.
-     */
     fun refresh() {
         val goal = _uiState.value.goal ?: return
+
         financialDataJob?.cancel()
+
         observeFinancialData(goal)
     }
 
-    private fun safeSubtract(first: Long, second: Long): Long {
+    private fun safeSubtract(
+        first: Long,
+        second: Long
+    ): Long {
         return try {
             Math.subtractExact(first, second)
         } catch (_: ArithmeticException) {
