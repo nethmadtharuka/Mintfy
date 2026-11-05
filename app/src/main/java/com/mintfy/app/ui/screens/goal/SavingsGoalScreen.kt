@@ -28,6 +28,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.mintfy.app.data.model.SavingsGoal
+import com.mintfy.app.data.model.SavingsGoalStatus
 import com.mintfy.app.ui.components.ErrorBanner
 import com.mintfy.app.ui.components.MintfyCard
 import com.mintfy.app.ui.components.MintfyDatePicker
@@ -325,13 +326,14 @@ fun SavingsGoalScreen(
                                 )
                             }
 
+                            val reached = goal.status == SavingsGoalStatus.ACHIEVED
                             Text(
-                                if (progress.isOnTrack) {
-                                    "On Track"
-                                } else {
-                                    "Behind"
+                                when {
+                                    reached -> "Goal reached"
+                                    progress.isOnTrack -> "On Track"
+                                    else -> "Behind"
                                 },
-                                color = if (progress.isOnTrack) {
+                                color = if (reached || progress.isOnTrack) {
                                     MaterialTheme.colorScheme.primary
                                 } else {
                                     MaterialTheme.colorScheme.error
@@ -339,7 +341,7 @@ fun SavingsGoalScreen(
                                 style = MaterialTheme.typography.titleMedium
                             )
 
-                            Text("Deadline: ${goal.deadline}")
+                            Text("Deadline: ${goal.deadline.format(DateTimeFormatter.ofPattern("d MMM yyyy"))}")
                         }
 
                         PrimaryButton(

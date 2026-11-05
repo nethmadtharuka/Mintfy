@@ -4,6 +4,7 @@ import com.mintfy.app.data.model.Expense
 import com.mintfy.app.data.model.IncomeEntry
 import com.mintfy.app.data.model.IncomeStatus
 import com.mintfy.app.data.repository.toLocalDate
+import com.mintfy.app.ui.screens.dashboard.ARCHIVED_CATEGORY_NAME
 import com.mintfy.app.ui.screens.income.BASE_CURRENCY
 import com.mintfy.app.ui.screens.income.formatCents
 import java.time.LocalDate
@@ -56,7 +57,7 @@ fun historyRows(
                 id = e.id,
                 kind = EntryKind.EXPENSE,
                 date = e.date.toLocalDate(),
-                title = categoryNames[e.categoryId] ?: "Unknown category",
+                title = categoryNames[e.categoryId] ?: ARCHIVED_CATEGORY_NAME, // archived categories are not in the list
                 detail = listOfNotNull(paymentMethodNames[e.paymentMethodId], e.note).joinToString(" · "),
                 amountCents = -e.amountCents,
             )

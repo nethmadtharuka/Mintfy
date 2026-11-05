@@ -4,6 +4,9 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.mintfy.app.data.local.CacheDao
+import com.mintfy.app.data.local.toCached
+import com.mintfy.app.data.local.toModel
 import com.mintfy.app.data.model.IncomeSource
 import com.mintfy.app.data.model.IncomeSourceType
 import kotlinx.coroutines.channels.awaitClose
@@ -21,6 +24,7 @@ import javax.inject.Singleton
 class IncomeSourceRepository @Inject constructor(
     private val firestore: FirebaseFirestore,
     private val auth: FirebaseAuth,
+    private val cache: CacheDao,
 ) {
 
     /** Emits the signed-in user's sources that are not archived, in real time, including offline writes. */
@@ -30,6 +34,10 @@ class IncomeSourceRepository @Inject constructor(
             close(signedOut())
             return@callbackFlow
         }
+        val cacheFirst = CacheFirst(this, "income sources") { list ->
+            cache.replaceIncomeSources(uid, list.mapIndexed { i, item -> item.toCached(uid, i) })
+        }
+        cacheFirst.startFrom { cache.incomeSources(uid).mapNotNull { it.toModel() } }
         val registration = sources(uid)
             .whereEqualTo(ARCHIVED, false)
             .addSnapshotListener { snapshot, error ->
@@ -38,7 +46,7 @@ class IncomeSourceRepository @Inject constructor(
                     return@addSnapshotListener
                 }
                 val list = snapshot?.documents.orEmpty().mapNotNull { it.toIncomeSource() }
-                trySend(list.sortedWith(displayOrder))
+                cacheFirst.onLive(list.sortedWith(displayOrder))
             }
         awaitClose { registration.remove() }
     }

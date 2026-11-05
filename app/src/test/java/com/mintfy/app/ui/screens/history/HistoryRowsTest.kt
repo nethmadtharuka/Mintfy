@@ -103,7 +103,7 @@ class HistoryRowsTest {
             expenses = listOf(expense("e1", 20, categoryId = "archived_category")),
             entries = listOf(income("i1", 20, sourceId = "archived_source")),
         )
-        assertEquals("Unknown category", result.first { it.id == "e1" }.title)
+        assertEquals("Archived category", result.first { it.id == "e1" }.title)
         assertEquals("Income", result.first { it.id == "i1" }.title)
     }
 

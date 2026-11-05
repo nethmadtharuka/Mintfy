@@ -11,6 +11,10 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.Source
+import com.mintfy.app.data.local.CacheDao
+import com.mintfy.app.data.local.toCached
+import com.mintfy.app.data.local.toModel
+import com.mintfy.app.data.local.CachedIncomeEntry
 import com.mintfy.app.data.model.IncomeEntry
 import com.mintfy.app.data.model.IncomeSourceType
 import com.mintfy.app.data.model.IncomeStatus
@@ -31,6 +35,7 @@ data class SaveOutcome(val id: String, val pendingSync: Boolean)
 class IncomeRepository @Inject constructor(
     private val firestore: FirebaseFirestore,
     private val auth: FirebaseAuth,
+    private val cache: CacheDao,
 ) {
 
     /** Saves a new income entry. Inputs must already be validated (see IncomeValidation). */
@@ -50,7 +55,11 @@ class IncomeRepository @Inject constructor(
      * Income dated [from] to [to] inclusive, newest first, in real time, including unpaid entries.
      * Served from the phone's cache first, so it also works offline. The listener is removed when collection ends.
      */
-    fun observeEntries(from: LocalDate, to: LocalDate): Flow<List<IncomeEntry>> = observe { entries ->
+    fun observeEntries(from: LocalDate, to: LocalDate): Flow<List<IncomeEntry>> = observe(
+        what = "income",
+        readCache = { uid -> cache.incomeEntries(uid, from.toEpochDay(), to.toEpochDay()) },
+        writeCache = { uid, rows -> cache.replaceIncomeEntries(uid, from.toEpochDay(), to.toEpochDay(), rows) },
+    ) { entries ->
         entries
             .whereGreaterThanOrEqualTo(DATE, from.startOfDay())
             .whereLessThan(DATE, to.plusDays(1).startOfDay())
@@ -62,24 +71,38 @@ class IncomeRepository @Inject constructor(
      * entries a month, so all of them are loaded and sorted on the phone; an equality filter alone needs
      * only Firestore's automatic index. Served from the cache first, so it also works offline.
      */
-    fun observeFreelanceEntries(): Flow<List<IncomeEntry>> = observe { entries ->
+    fun observeFreelanceEntries(): Flow<List<IncomeEntry>> = observe(
+        what = "freelance income",
+        readCache = { uid -> cache.incomeEntriesOfType(uid, FREELANCE) },
+        writeCache = { uid, rows -> cache.replaceIncomeEntriesOfType(uid, FREELANCE, rows) },
+    ) { entries ->
         entries.whereEqualTo(SOURCE_TYPE, IncomeSourceType.FREELANCE.name)
     }
 
-    /** Listens to [query] over the signed-in user's entries. The listener is removed when collection ends. */
-    private fun observe(query: (CollectionReference) -> Query): Flow<List<IncomeEntry>> = callbackFlow {
+    /**
+     * Listens to [query] over the signed-in user's entries, showing the Room copy first (FR-G2) and
+     * refreshing it from every snapshot. The listener is removed when collection ends.
+     */
+    private fun observe(
+        what: String,
+        readCache: suspend (uid: String) -> List<CachedIncomeEntry>,
+        writeCache: suspend (uid: String, rows: List<CachedIncomeEntry>) -> Unit,
+        query: (CollectionReference) -> Query,
+    ): Flow<List<IncomeEntry>> = callbackFlow {
         val uid = auth.currentUser?.uid
         if (uid == null) {
             close(signedOut())
             return@callbackFlow
         }
+        val cacheFirst = CacheFirst(this, what) { list -> writeCache(uid, list.mapNotNull { it.toCached(uid) }) }
+        cacheFirst.startFrom { readCache(uid).mapNotNull { it.toModel() } }
         val registration = query(entries(uid))
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     close(error.toRepositoryException())
                     return@addSnapshotListener
                 }
-                trySend(snapshot?.documents.orEmpty().mapNotNull { it.toIncomeEntry() })
+                cacheFirst.onLive(snapshot?.documents.orEmpty().mapNotNull { it.toIncomeEntry() })
             }
         awaitClose { registration.remove() }
     }
@@ -160,6 +183,8 @@ class IncomeRepository @Inject constructor(
     }
 
     private companion object {
+        val FREELANCE = IncomeSourceType.FREELANCE.name
+
         // Field names from firestore.rules (users/{uid}/incomeEntries).
         const val SOURCE_ID = "sourceId"
         const val SOURCE_TYPE = "sourceType"

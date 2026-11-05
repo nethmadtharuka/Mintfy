@@ -21,6 +21,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 
+import androidx.compose.runtime.CompositionLocalProvider
+import com.mintfy.app.ui.components.LocalSyncStatus
 import com.mintfy.app.ui.components.MainTab
 import com.mintfy.app.ui.components.MintfyBottomBar
 import com.mintfy.app.ui.screens.auth.AuthViewModel
@@ -101,9 +103,12 @@ private val MainTab.route: String
 fun MintfyNavHost(
     // Activity-scoped authentication ViewModel.
     authViewModel: AuthViewModel = hiltViewModel(),
+    // Activity-scoped, so the offline indicator keeps one status across screens (FR-G5).
+    syncViewModel: SyncViewModel = hiltViewModel(),
 ) {
 
     val session by authViewModel.session.collectAsStateWithLifecycle()
+    val syncStatus by syncViewModel.status.collectAsStateWithLifecycle()
 
     if (session == Session.Loading) {
 
@@ -165,264 +170,268 @@ fun MintfyNavHost(
     }
 
 
-    NavHost(
-        navController = navController,
-        startDestination = startDestination
-    ) {
+    // Every MintfyTopBar reads this to show the offline / not-synced pill.
+    CompositionLocalProvider(LocalSyncStatus provides syncStatus) {
 
-        composable(Routes.LOGIN) {
+        NavHost(
+            navController = navController,
+            startDestination = startDestination
+        ) {
 
-            LoginScreen(
-                viewModel = authViewModel,
+            composable(Routes.LOGIN) {
 
-                onRegisterClick = {
-                    authViewModel.clearErrors()
+                LoginScreen(
+                    viewModel = authViewModel,
 
-                    navController.navigate(Routes.REGISTER) {
-                        launchSingleTop = true
-                    }
-                },
-            )
-        }
-        composable(Routes.REGISTER) {
+                    onRegisterClick = {
+                        authViewModel.clearErrors()
 
-            RegisterScreen(
-                viewModel = authViewModel,
-
-                onSignInClick = {
-                    authViewModel.clearErrors()
-                    navController.popBackStack()
-                },
-            )
-        }
-
-        composable(Routes.DASHBOARD) {
-
-            // Never render signed-in content without a session.
-            if (session !is Session.SignedIn) {
-                return@composable
-            }
-
-            // Obtain Savings Goal ViewModel using Hilt.
-            val goalViewModel: GoalViewModel = hiltViewModel()
-
-            DashboardScreen(
-
-                // FR-F4: Pass goal data to Dashboard.
-                goalViewModel = goalViewModel,
-
-                onAddExpense = openAddExpense,
-
-                onAddIncome = {
-                    navController.navigate(Routes.ADD_INCOME) {
-                        launchSingleTop = true
-                    }
-                },
-
-                // Goal is a tab, so the goal card opens it the way the bottom bar does.
-                onSavingsGoal = { navController.openTab(MainTab.GOAL) },
-
-                onSignOut = authViewModel::signOut,
-
-                onCategories = {
-                    navController.navigate(Routes.CATEGORIES) {
-                        launchSingleTop = true
-                    }
-                },
-
-                onRecurring = {
-                    navController.navigate(Routes.RECURRING) {
-                        launchSingleTop = true
-                    }
-                },
-
-                unpaidInvoices = {
-                    UnpaidInvoicesCard(
-                        onViewInvoices = {
-                            navController.navigate(Routes.INVOICES) {
-                                launchSingleTop = true
-                            }
+                        navController.navigate(Routes.REGISTER) {
+                            launchSingleTop = true
                         }
-                    )
-                },
+                    },
+                )
+            }
+            composable(Routes.REGISTER) {
 
-                bottomBar = { tabBar(MainTab.DASHBOARD) },
-            )
-        }
+                RegisterScreen(
+                    viewModel = authViewModel,
 
-        composable(Routes.INVOICES) { entry ->
-
-            if (session !is Session.SignedIn) {
-                return@composable
+                    onSignInClick = {
+                        authViewModel.clearErrors()
+                        navController.popBackStack()
+                    },
+                )
             }
 
-            InvoicesScreen(
+            composable(Routes.DASHBOARD) {
 
-                onBack = navController.closer(entry),
+                // Never render signed-in content without a session.
+                if (session !is Session.SignedIn) {
+                    return@composable
+                }
 
-                onOpenInvoice = { id ->
+                // Obtain Savings Goal ViewModel using Hilt.
+                val goalViewModel: GoalViewModel = hiltViewModel()
 
-                    navController.navigate(Routes.editIncome(id)) {
-                        launchSingleTop = true
-                    }
-                },
+                DashboardScreen(
 
-                onAddIncome = {
+                    // FR-F4: Pass goal data to Dashboard.
+                    goalViewModel = goalViewModel,
 
-                    navController.navigate(Routes.ADD_INCOME) {
-                        launchSingleTop = true
-                    }
-                },
-            )
-        }
+                    onAddExpense = openAddExpense,
 
-        // Bottom-navigation tab: no back arrow; the system back button returns to the Dashboard.
-        composable(Routes.HISTORY) {
+                    onAddIncome = {
+                        navController.navigate(Routes.ADD_INCOME) {
+                            launchSingleTop = true
+                        }
+                    },
 
-            if (session !is Session.SignedIn) {
-                return@composable
+                    // Goal is a tab, so the goal card opens it the way the bottom bar does.
+                    onSavingsGoal = { navController.openTab(MainTab.GOAL) },
+
+                    onSignOut = authViewModel::signOut,
+
+                    onCategories = {
+                        navController.navigate(Routes.CATEGORIES) {
+                            launchSingleTop = true
+                        }
+                    },
+
+                    onRecurring = {
+                        navController.navigate(Routes.RECURRING) {
+                            launchSingleTop = true
+                        }
+                    },
+
+                    unpaidInvoices = {
+                        UnpaidInvoicesCard(
+                            onViewInvoices = {
+                                navController.navigate(Routes.INVOICES) {
+                                    launchSingleTop = true
+                                }
+                            }
+                        )
+                    },
+
+                    bottomBar = { tabBar(MainTab.DASHBOARD) },
+                )
             }
 
-            HistoryScreen(
+            composable(Routes.INVOICES) { entry ->
 
-                bottomBar = { tabBar(MainTab.HISTORY) },
+                if (session !is Session.SignedIn) {
+                    return@composable
+                }
 
-                onOpenEntry = { row ->
+                InvoicesScreen(
 
-                    val route = when (row.kind) {
+                    onBack = navController.closer(entry),
 
-                        EntryKind.EXPENSE ->
-                            Routes.editExpense(row.id)
+                    onOpenInvoice = { id ->
 
-                        EntryKind.INCOME ->
-                            Routes.editIncome(row.id)
-                    }
+                        navController.navigate(Routes.editIncome(id)) {
+                            launchSingleTop = true
+                        }
+                    },
 
-                    navController.navigate(route) {
-                        launchSingleTop = true
-                    }
-                },
+                    onAddIncome = {
 
-                onAddExpense = openAddExpense,
-
-                onAddIncome = {
-                    navController.navigate(Routes.ADD_INCOME) {
-                        launchSingleTop = true
-                    }
-                },
-            )
-        }
-
-
-        composable(
-            "${Routes.ADD_EXPENSE}?${Routes.ARG_ID}={${Routes.ARG_ID}}" +
-                    "&${Routes.ARG_RECURRING_ID}={${Routes.ARG_RECURRING_ID}}",
-            arguments = optionalId + navArgument(Routes.ARG_RECURRING_ID) {
-                type = NavType.StringType
-                nullable = true
-            }
-        ) { entry ->
-
-            if (session !is Session.SignedIn) {
-                return@composable
+                        navController.navigate(Routes.ADD_INCOME) {
+                            launchSingleTop = true
+                        }
+                    },
+                )
             }
 
-            val close = navController.closer(entry)
+            // Bottom-navigation tab: no back arrow; the system back button returns to the Dashboard.
+            composable(Routes.HISTORY) {
 
-            AddExpenseScreen(
-                onBack = close,
-                onSaved = close
-            )
-        }
+                if (session !is Session.SignedIn) {
+                    return@composable
+                }
 
-        composable(
-            "${Routes.ADD_INCOME}?${Routes.ARG_ID}={${Routes.ARG_ID}}",
-            arguments = optionalId
-        ) { entry ->
+                HistoryScreen(
 
-            if (session !is Session.SignedIn) {
-                return@composable
+                    bottomBar = { tabBar(MainTab.HISTORY) },
+
+                    onOpenEntry = { row ->
+
+                        val route = when (row.kind) {
+
+                            EntryKind.EXPENSE ->
+                                Routes.editExpense(row.id)
+
+                            EntryKind.INCOME ->
+                                Routes.editIncome(row.id)
+                        }
+
+                        navController.navigate(route) {
+                            launchSingleTop = true
+                        }
+                    },
+
+                    onAddExpense = openAddExpense,
+
+                    onAddIncome = {
+                        navController.navigate(Routes.ADD_INCOME) {
+                            launchSingleTop = true
+                        }
+                    },
+                )
             }
 
-            val close = navController.closer(entry)
 
-            AddIncomeScreen(
-                onBack = close,
-                onSaved = close
-            )
-        }
-        // Figma "04 Income & freelance invoices" (FR-B1 to FR-B9). Bottom-navigation tab.
-        composable(Routes.INCOME) {
+            composable(
+                "${Routes.ADD_EXPENSE}?${Routes.ARG_ID}={${Routes.ARG_ID}}" +
+                        "&${Routes.ARG_RECURRING_ID}={${Routes.ARG_RECURRING_ID}}",
+                arguments = optionalId + navArgument(Routes.ARG_RECURRING_ID) {
+                    type = NavType.StringType
+                    nullable = true
+                }
+            ) { entry ->
 
-            if (session !is Session.SignedIn) {
-                return@composable
+                if (session !is Session.SignedIn) {
+                    return@composable
+                }
+
+                val close = navController.closer(entry)
+
+                AddExpenseScreen(
+                    onBack = close,
+                    onSaved = close
+                )
             }
 
-            IncomeScreen(
-                bottomBar = { tabBar(MainTab.INCOME) },
+            composable(
+                "${Routes.ADD_INCOME}?${Routes.ARG_ID}={${Routes.ARG_ID}}",
+                arguments = optionalId
+            ) { entry ->
 
-                onAddIncome = {
-                    navController.navigate(Routes.ADD_INCOME) {
-                        launchSingleTop = true
-                    }
-                },
+                if (session !is Session.SignedIn) {
+                    return@composable
+                }
 
-                onOpenEntry = { id ->
-                    navController.navigate(Routes.editIncome(id)) {
-                        launchSingleTop = true
-                    }
-                },
+                val close = navController.closer(entry)
 
-                onViewInvoices = {
-                    navController.navigate(Routes.INVOICES) {
-                        launchSingleTop = true
-                    }
-                },
-            )
-        }
+                AddIncomeScreen(
+                    onBack = close,
+                    onSaved = close
+                )
+            }
+            // Figma "04 Income & freelance invoices" (FR-B1 to FR-B9). Bottom-navigation tab.
+            composable(Routes.INCOME) {
 
-        // Figma "08 Categories" (FR-D2, FR-D4), opened from the dashboard's "⋮" menu.
-        composable(Routes.CATEGORIES) { entry ->
+                if (session !is Session.SignedIn) {
+                    return@composable
+                }
 
-            if (session !is Session.SignedIn) {
-                return@composable
+                IncomeScreen(
+                    bottomBar = { tabBar(MainTab.INCOME) },
+
+                    onAddIncome = {
+                        navController.navigate(Routes.ADD_INCOME) {
+                            launchSingleTop = true
+                        }
+                    },
+
+                    onOpenEntry = { id ->
+                        navController.navigate(Routes.editIncome(id)) {
+                            launchSingleTop = true
+                        }
+                    },
+
+                    onViewInvoices = {
+                        navController.navigate(Routes.INVOICES) {
+                            launchSingleTop = true
+                        }
+                    },
+                )
             }
 
-            CategoriesScreen(onBack = navController.closer(entry))
-        }
+            // Figma "08 Categories" (FR-D2, FR-D4), opened from the dashboard's "⋮" menu.
+            composable(Routes.CATEGORIES) { entry ->
 
-        // Figma "09 Recurring" (FR-C6), opened from the dashboard's "⋮" menu.
-        composable(Routes.RECURRING) { entry ->
+                if (session !is Session.SignedIn) {
+                    return@composable
+                }
 
-            if (session !is Session.SignedIn) {
-                return@composable
+                CategoriesScreen(onBack = navController.closer(entry))
             }
 
-            RecurringScreen(
-                onBack = navController.closer(entry),
+            // Figma "09 Recurring" (FR-C6), opened from the dashboard's "⋮" menu.
+            composable(Routes.RECURRING) { entry ->
 
-                // Opens Add expense pre-filled with this item; the amount can still be changed (FR-D3).
-                onRecord = { id ->
-                    navController.navigate(Routes.recordRecurring(id)) {
-                        launchSingleTop = true
-                    }
-                },
-            )
-        }
+                if (session !is Session.SignedIn) {
+                    return@composable
+                }
 
-        // Bottom-navigation tab.
-        composable(Routes.SAVINGS_GOAL) {
+                RecurringScreen(
+                    onBack = navController.closer(entry),
 
-            if (session !is Session.SignedIn) {
-                return@composable
+                    // Opens Add expense pre-filled with this item; the amount can still be changed (FR-D3).
+                    onRecord = { id ->
+                        navController.navigate(Routes.recordRecurring(id)) {
+                            launchSingleTop = true
+                        }
+                    },
+                )
             }
 
-            val goalViewModel: GoalViewModel = hiltViewModel()
+            // Bottom-navigation tab.
+            composable(Routes.SAVINGS_GOAL) {
 
-            SavingsGoalScreen(
-                viewModel = goalViewModel,
-                bottomBar = { tabBar(MainTab.GOAL) },
-            )
+                if (session !is Session.SignedIn) {
+                    return@composable
+                }
+
+                val goalViewModel: GoalViewModel = hiltViewModel()
+
+                SavingsGoalScreen(
+                    viewModel = goalViewModel,
+                    bottomBar = { tabBar(MainTab.GOAL) },
+                )
+            }
         }
     }
 }

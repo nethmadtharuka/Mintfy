@@ -1,5 +1,6 @@
 package com.mintfy.app.data.repository
 
+import android.util.Log
 import com.google.firebase.FirebaseTooManyRequestsException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
@@ -8,6 +9,7 @@ import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 import com.google.firebase.auth.FirebaseUser
+import com.mintfy.app.data.local.CacheDao
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -19,6 +21,7 @@ import javax.inject.Singleton
 class AuthRepository @Inject constructor(
     private val auth: FirebaseAuth,
     private val profileRepository: UserProfileRepository,
+    private val cache: CacheDao,
 ) {
 
     /** Emits the signed-in user, or null when signed out. The listener is removed when collection ends. */
@@ -42,7 +45,14 @@ class AuthRepository @Inject constructor(
             profileRepository.ensureProfile(name).getOrThrow()
         }
 
-    fun signOut() = auth.signOut()
+    /**
+     * Signs out, then removes the offline copy of the account's data (FR-G2), so nothing of it stays
+     * on a shared phone. Signing out never fails because of the cache.
+     */
+    suspend fun signOut() {
+        auth.signOut()
+        runCatching { cache.clearAll() }.onFailure { Log.w("AuthRepository", "Couldn't clear the offline cache", it) }
+    }
 
     // Email enumeration protection is on, so a wrong password and an unknown email look the same.
     private fun toAuthError(e: Throwable): RepositoryException = when {
