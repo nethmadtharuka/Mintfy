@@ -104,7 +104,11 @@ fun AddExpenseContent(
         if (focusAmountOnOpen) amountFocus.requestFocus() // Figma annotation: amount field has focus on open
     }
 
-    val title = if (state.isEditing) "Edit expense" else "Add expense"
+    val title = when {
+        state.isEditing -> "Edit expense"
+        state.recordingFor != null -> "Record ${state.recordingFor}"
+        else -> "Add expense"
+    }
     Scaffold(topBar = { MintfyTopBar(title, onBack = onCancel) }) { innerPadding ->
         Column(
             verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -116,6 +120,11 @@ fun AddExpenseContent(
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
         ) {
+            if (state.recordingFor != null) {
+                // FR-D3: committed costs such as utilities change each month.
+                SectionLabel("This period's ${state.recordingFor}. Change the amount if it was different this time.")
+            }
+
             MintfyTextField(
                 value = state.amount,
                 onValueChange = onAmountChange,

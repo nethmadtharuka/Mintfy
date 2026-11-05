@@ -69,6 +69,7 @@ data class RecurringActions(
     val onRetry: () -> Unit = {},
     val onAdd: () -> Unit = {},
     val onOpen: (id: String) -> Unit = {},
+    val onRecord: (id: String) -> Unit = {},
     val onNameChange: (String) -> Unit = {},
     val onAmountChange: (String) -> Unit = {},
     val onCategorySelected: (String) -> Unit = {},
@@ -86,6 +87,7 @@ data class RecurringActions(
 @Composable
 fun RecurringScreen(
     onBack: () -> Unit,
+    onRecord: (id: String) -> Unit,
     viewModel: RecurringViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -105,6 +107,7 @@ fun RecurringScreen(
             onRetry = viewModel::retry,
             onAdd = viewModel::openNew,
             onOpen = viewModel::openItem,
+            onRecord = onRecord,
             onNameChange = viewModel::onNameChange,
             onAmountChange = viewModel::onAmountChange,
             onCategorySelected = viewModel::onCategorySelected,
@@ -156,7 +159,7 @@ fun RecurringContent(state: RecurringUiState, actions: RecurringActions) {
                     RecurringGroup("Paused", groups.paused, state, actions)
                 }
             }
-            SectionLabel("Tap an item to change it or pause it.")
+            SectionLabel("When one is due, record it in one tap. Tap an item to change it or pause it.")
             PrimaryButton("Add recurring expense", onClick = actions.onAdd)
         }
     }
@@ -188,6 +191,7 @@ private fun RecurringGroup(
                 categoryName = state.categoryNames[item.categoryId] ?: ARCHIVED_CATEGORY_NAME,
                 today = state.today,
                 onClick = { actions.onOpen(item.id) },
+                onRecord = { actions.onRecord(item.id) },
             )
         }
     }
@@ -195,38 +199,56 @@ private fun RecurringGroup(
 
 /** Figma row: name over "Monthly · 1st", amount on the right. The due state is added to the subtitle. */
 @Composable
-private fun RecurringRow(item: RecurringExpense, categoryName: String, today: LocalDate, onClick: () -> Unit) {
+private fun RecurringRow(
+    item: RecurringExpense,
+    categoryName: String,
+    today: LocalDate,
+    onClick: () -> Unit,
+    onRecord: () -> Unit,
+) {
     val isDue = item.isDue(today)
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 48.dp)
-            .clickable(role = Role.Button, onClickLabel = "Edit", onClick = onClick),
-    ) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                item.name,
-                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                "${scheduleLabel(item.frequency, item.nextDueDate)} · $categoryName",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                dueLabel(item, today),
-                style = MaterialTheme.typography.bodySmall,
-                color = if (isDue) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .clickable(role = Role.Button, onClickLabel = "Edit", onClick = onClick),
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    item.name,
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    "${scheduleLabel(item.frequency, item.nextDueDate)} · $categoryName",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    dueLabel(item, today),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (isDue) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(lkr(item.amountCents), style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold))
         }
-        Text(lkr(item.amountCents), style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold))
+        if (isDue) {
+            // One tap to add this period's expense; the amount can be changed before saving (FR-D3).
+            SecondaryButton("Record this ${periodName(item.frequency)}'s ${item.name}", onClick = onRecord)
+        }
     }
+}
+
+private fun periodName(frequency: RecurringFrequency): String = when (frequency) {
+    RecurringFrequency.WEEKLY -> "week"
+    RecurringFrequency.MONTHLY -> "month"
+    RecurringFrequency.YEARLY -> "year"
 }
 
 @Composable

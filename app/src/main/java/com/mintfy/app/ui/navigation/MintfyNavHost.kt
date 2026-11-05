@@ -61,8 +61,14 @@ object Routes {
     const val CATEGORIES = "categories"
     const val RECURRING = "recurring"
 
+    /** Optional recurring item to record this period's expense for (FR-C6). */
+    const val ARG_RECURRING_ID = "recurringId"
+
     fun editExpense(id: String) =
         "$ADD_EXPENSE?$ARG_ID=${Uri.encode(id)}"
+
+    fun recordRecurring(recurringId: String) =
+        "$ADD_EXPENSE?$ARG_RECURRING_ID=${Uri.encode(recurringId)}"
 
     fun editIncome(id: String) =
         "$ADD_INCOME?$ARG_ID=${Uri.encode(id)}"
@@ -309,8 +315,12 @@ fun MintfyNavHost(
 
 
         composable(
-            "${Routes.ADD_EXPENSE}?${Routes.ARG_ID}={${Routes.ARG_ID}}",
-            arguments = optionalId
+            "${Routes.ADD_EXPENSE}?${Routes.ARG_ID}={${Routes.ARG_ID}}" +
+                    "&${Routes.ARG_RECURRING_ID}={${Routes.ARG_RECURRING_ID}}",
+            arguments = optionalId + navArgument(Routes.ARG_RECURRING_ID) {
+                type = NavType.StringType
+                nullable = true
+            }
         ) { entry ->
 
             if (session !is Session.SignedIn) {
@@ -388,7 +398,16 @@ fun MintfyNavHost(
                 return@composable
             }
 
-            RecurringScreen(onBack = navController.closer(entry))
+            RecurringScreen(
+                onBack = navController.closer(entry),
+
+                // Opens Add expense pre-filled with this item; the amount can still be changed (FR-D3).
+                onRecord = { id ->
+                    navController.navigate(Routes.recordRecurring(id)) {
+                        launchSingleTop = true
+                    }
+                },
+            )
         }
 
         // Bottom-navigation tab.

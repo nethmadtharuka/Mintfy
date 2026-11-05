@@ -1,5 +1,6 @@
 package com.mintfy.app.data.repository
 
+import android.util.Log
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentSnapshot
@@ -71,9 +72,21 @@ class RecurringRepository @Inject constructor(
     suspend fun setActive(id: String, active: Boolean): Result<SaveOutcome> =
         updateFields(id, mapOf(ACTIVE to active))
 
-    /** Moves it to its next period after this period's expense has been recorded. */
-    suspend fun setNextDueDate(id: String, nextDueDate: LocalDate): Result<SaveOutcome> =
-        updateFields(id, mapOf(NEXT_DUE_DATE to nextDueDate.toDueTimestamp()))
+    /**
+     * Moves it to its next period once this period's expense has been recorded. Like adding an
+     * expense, it is not awaited: the phone's copy changes at once and the server catches up,
+     * including later when offline, so recording a due item stays instant.
+     */
+    fun advanceTo(id: String, nextDueDate: LocalDate): Result<Unit> {
+        val uid = auth.currentUser?.uid ?: return Result.failure(signedOut())
+        val data = mapOf<String, Any>(
+            NEXT_DUE_DATE to nextDueDate.toDueTimestamp(),
+            UPDATED_AT to FieldValue.serverTimestamp(),
+        )
+        recurring(uid).document(id).update(data)
+            .addOnFailureListener { Log.w(TAG, "Recurring expense $id was not moved on", it) }
+        return Result.success(Unit)
+    }
 
     /** Expenses already recorded from it are kept; they are real spending. */
     suspend fun deleteRecurring(id: String): Result<SaveOutcome> {
@@ -118,6 +131,8 @@ class RecurringRepository @Inject constructor(
     }
 
     private companion object {
+        const val TAG = "RecurringRepository"
+
         // Field names from firestore.rules (users/{uid}/recurringExpenses).
         const val NAME = "name"
         const val CATEGORY_ID = "categoryId"

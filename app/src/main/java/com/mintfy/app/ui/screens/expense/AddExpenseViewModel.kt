@@ -6,14 +6,17 @@ import androidx.lifecycle.viewModelScope
 import com.mintfy.app.data.local.ExpensePreferences
 import com.mintfy.app.data.model.Category
 import com.mintfy.app.data.model.PaymentMethod
+import com.mintfy.app.data.model.RecurringExpense
 import com.mintfy.app.data.model.SpendingType
 import com.mintfy.app.data.repository.CategoryRepository
 import com.mintfy.app.data.repository.ExpenseRepository
 import com.mintfy.app.data.repository.PaymentMethodRepository
+import com.mintfy.app.data.repository.RecurringRepository
 import com.mintfy.app.data.repository.SaveOutcome
 import com.mintfy.app.data.repository.toLocalDate
 import com.mintfy.app.ui.navigation.Routes
 import com.mintfy.app.ui.screens.income.formatCents
+import com.mintfy.app.ui.screens.recurring.next
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -48,6 +51,7 @@ data class AddExpenseUiState(
     val savedOffline: Boolean = false,
     val isDeleted: Boolean = false,
     val isEditing: Boolean = false,
+    val recordingFor: String? = null, // the recurring item's name when recording one of its periods
 )
 
 /** What the user has typed or picked so far. Choices left null fall back to the defaults below. */
@@ -68,21 +72,29 @@ private data class ExpenseForm(
     val isEditing: Boolean = false,
     val isLoadingEntry: Boolean = false,
     val loadedDate: LocalDate? = null, // the saved date, so an unchanged one is not rewritten
+    val recurring: RecurringExpense? = null, // set when recording a period of a recurring item
 )
 
-/** Add an expense, or edit a saved one when opened with an expense ID (FR-C5). */
+/**
+ * Add an expense, or edit a saved one when opened with an expense ID (FR-C5), or record this period
+ * of a recurring item when opened with a recurring ID (FR-C6).
+ */
 @HiltViewModel
 class AddExpenseViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     categoryRepository: CategoryRepository,
     paymentMethodRepository: PaymentMethodRepository,
     private val expenseRepository: ExpenseRepository,
+    private val recurringRepository: RecurringRepository,
     private val preferences: ExpensePreferences,
 ) : ViewModel() {
 
     private val editId: String? = savedStateHandle[Routes.ARG_ID]
+    private val recurringId: String? = if (editId == null) savedStateHandle[Routes.ARG_RECURRING_ID] else null
 
-    private val form = MutableStateFlow(ExpenseForm(isEditing = editId != null, isLoadingEntry = editId != null))
+    private val form = MutableStateFlow(
+        ExpenseForm(isEditing = editId != null, isLoadingEntry = editId != null || recurringId != null)
+    )
 
     // null means "still loading"; an empty list means loaded but nothing there yet.
     private val categories = categoryRepository.observeCategories().loadingThenList()
@@ -115,6 +127,7 @@ class AddExpenseViewModel @Inject constructor(
             savedOffline = f.savedOffline,
             isDeleted = f.isDeleted,
             isEditing = f.isEditing,
+            recordingFor = f.recurring?.name,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AddExpenseUiState(isEditing = editId != null))
 
@@ -133,6 +146,28 @@ class AddExpenseViewModel @Inject constructor(
                                 paymentMethodId = e.paymentMethodId,
                                 isLoadingEntry = false,
                                 loadedDate = date,
+                            )
+                        }
+                    }
+                    .onFailure { e -> form.update { it.copy(isLoadingEntry = false, error = e.message ?: GENERIC_ERROR) } }
+            }
+        }
+        if (recurringId != null) {
+            viewModelScope.launch {
+                recurringRepository.getRecurring(recurringId)
+                    .onSuccess { r ->
+                        form.update {
+                            it.copy(
+                                // The usual amount, category and payment method; all can be changed,
+                                // because committed costs such as utilities vary each month (FR-D3).
+                                amount = formatCents(r.amountCents),
+                                // Dated the day it fell due, so a late entry still lands in the right month.
+                                date = minOf(r.nextDueDate, LocalDate.now()),
+                                note = r.name,
+                                categoryId = r.categoryId,
+                                paymentMethodId = r.paymentMethodId,
+                                isLoadingEntry = false,
+                                recurring = r,
                             )
                         }
                     }
@@ -196,15 +231,23 @@ class AddExpenseViewModel @Inject constructor(
             return
         }
 
+        val recurring = current.recurring
         expenseRepository.addExpense(
             amountCents = amountCents,
             date = state.date,
             categoryId = categoryId!!,
             paymentMethodId = paymentMethodId!!,
             note = state.note,
+            recurringId = recurring?.id,
         )
             .onSuccess {
-                preferences.remember(categoryId, paymentMethodId)
+                if (recurring != null) {
+                    // This period is recorded, so the item moves on to its next due date.
+                    recurringRepository.advanceTo(recurring.id, recurring.frequency.next(recurring.nextDueDate))
+                } else {
+                    // Rent and bills are not everyday spending, so they don't change the quick-entry defaults.
+                    preferences.remember(categoryId, paymentMethodId)
+                }
                 form.update { it.copy(isSaved = true, error = null) }
             }
             .onFailure { e -> form.update { it.copy(error = e.message) } }

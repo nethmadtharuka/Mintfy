@@ -31,6 +31,7 @@ class ExpenseRepository @Inject constructor(
      * listener (and the dashboard later) sees it immediately, and it is sent to the server in the
      * background, including later if the phone is offline now (FR-G1, FR-G3, NFR-03). Waiting for
      * the server would freeze the save button whenever there is no signal.
+     * [recurringId] links an expense recorded from a recurring item (FR-C6).
      */
     fun addExpense(
         amountCents: Long,
@@ -38,6 +39,7 @@ class ExpenseRepository @Inject constructor(
         categoryId: String,
         paymentMethodId: String,
         note: String?,
+        recurringId: String? = null,
     ): Result<String> {
         val uid = auth.currentUser?.uid ?: return Result.failure(signedOut())
         val doc = expenses(uid).document() // ID generated on the phone, so it works offline (schema D-08)
@@ -48,6 +50,7 @@ class ExpenseRepository @Inject constructor(
             put(CATEGORY_ID, categoryId)
             put(PAYMENT_METHOD_ID, paymentMethodId)
             note?.trim()?.takeIf { it.isNotEmpty() }?.let { put(NOTE, it) }
+            recurringId?.let { put(RECURRING_ID, it) }
             put(CREATED_AT, FieldValue.serverTimestamp())
             put(UPDATED_AT, FieldValue.serverTimestamp())
         }
