@@ -6,6 +6,9 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.mintfy.app.data.local.CacheDao
+import com.mintfy.app.data.local.toCached
+import com.mintfy.app.data.local.toModel
 import com.mintfy.app.data.model.RecurringExpense
 import com.mintfy.app.data.model.RecurringFrequency
 import kotlinx.coroutines.channels.awaitClose
@@ -22,6 +25,7 @@ import javax.inject.Singleton
 class RecurringRepository @Inject constructor(
     private val firestore: FirebaseFirestore,
     private val auth: FirebaseAuth,
+    private val cache: CacheDao,
 ) {
 
     /**
@@ -35,12 +39,16 @@ class RecurringRepository @Inject constructor(
             close(signedOut())
             return@callbackFlow
         }
+        val cacheFirst = CacheFirst(this, "recurring expenses") { list ->
+            cache.replaceRecurring(uid, list.mapIndexed { i, item -> item.toCached(uid, i) })
+        }
+        cacheFirst.startFrom { cache.recurring(uid).mapNotNull { it.toModel() } }
         val registration = recurring(uid).addSnapshotListener { snapshot, error ->
             if (error != null) {
                 close(error.toRepositoryException())
                 return@addSnapshotListener
             }
-            trySend(snapshot?.documents.orEmpty().mapNotNull { it.toRecurring() })
+            cacheFirst.onLive(snapshot?.documents.orEmpty().mapNotNull { it.toRecurring() })
         }
         awaitClose { registration.remove() }
     }

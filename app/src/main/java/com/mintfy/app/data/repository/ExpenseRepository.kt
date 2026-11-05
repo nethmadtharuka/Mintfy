@@ -7,6 +7,9 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
+import com.mintfy.app.data.local.CacheDao
+import com.mintfy.app.data.local.toCached
+import com.mintfy.app.data.local.toModel
 import com.mintfy.app.data.model.Expense
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -22,6 +25,7 @@ import javax.inject.Singleton
 class ExpenseRepository @Inject constructor(
     private val firestore: FirebaseFirestore,
     private val auth: FirebaseAuth,
+    private val cache: CacheDao,
 ) {
 
     /**
@@ -60,7 +64,8 @@ class ExpenseRepository @Inject constructor(
 
     /**
      * Expenses dated [from] to [to] inclusive, newest first (schema query Q5), in real time.
-     * Served from the phone's cache first, so it also works offline. The listener is removed when collection ends.
+     * Shown from the Room copy first (FR-G2), then kept live by the listener, which also refreshes
+     * that copy. Works offline. The listener is removed when collection ends.
      */
     fun observeExpenses(from: LocalDate, to: LocalDate): Flow<List<Expense>> = callbackFlow {
         val uid = auth.currentUser?.uid
@@ -68,6 +73,12 @@ class ExpenseRepository @Inject constructor(
             close(signedOut())
             return@callbackFlow
         }
+        val fromMillis = from.startOfDay().toDate().time
+        val toMillis = to.plusDays(1).startOfDay().toDate().time
+        val cacheFirst = CacheFirst(this, "expenses") { list ->
+            cache.replaceExpenses(uid, fromMillis, toMillis, list.map { it.toCached(uid) })
+        }
+        cacheFirst.startFrom { cache.expenses(uid, fromMillis, toMillis).map { it.toModel() } }
         val registration = expenses(uid)
             .whereGreaterThanOrEqualTo(DATE, from.startOfDay())
             .whereLessThan(DATE, to.plusDays(1).startOfDay())
@@ -77,7 +88,7 @@ class ExpenseRepository @Inject constructor(
                     close(error.toRepositoryException())
                     return@addSnapshotListener
                 }
-                trySend(snapshot?.documents.orEmpty().mapNotNull { it.toExpense() })
+                cacheFirst.onLive(snapshot?.documents.orEmpty().mapNotNull { it.toExpense() })
             }
         awaitClose { registration.remove() }
     }

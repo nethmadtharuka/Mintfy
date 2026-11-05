@@ -7,6 +7,9 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Source
+import com.mintfy.app.data.local.CacheDao
+import com.mintfy.app.data.local.toCached
+import com.mintfy.app.data.local.toModel
 import com.mintfy.app.data.model.Category
 import com.mintfy.app.data.model.DefaultReferenceData
 import com.mintfy.app.data.model.SpendingType
@@ -24,6 +27,7 @@ import javax.inject.Singleton
 class CategoryRepository @Inject constructor(
     private val firestore: FirebaseFirestore,
     private val auth: FirebaseAuth,
+    private val cache: CacheDao,
 ) {
 
     private val seedLock = Mutex()
@@ -41,6 +45,10 @@ class CategoryRepository @Inject constructor(
             close(signedOut())
             return@callbackFlow
         }
+        val cacheFirst = CacheFirst(this, "categories") { list ->
+            cache.replaceCategories(uid, list.mapIndexed { i, item -> item.toCached(uid, i) })
+        }
+        cacheFirst.startFrom { cache.categories(uid).mapNotNull { it.toModel() } }
         launch { ensureDefaults(uid) } // in the background, so the list never waits on the network
         val registration = categories(uid)
             .whereEqualTo(ARCHIVED, false)
@@ -50,7 +58,7 @@ class CategoryRepository @Inject constructor(
                     return@addSnapshotListener
                 }
                 val list = snapshot?.documents.orEmpty().mapNotNull { it.toCategory() }
-                trySend(list.sortedWith(displayOrder))
+                cacheFirst.onLive(list.sortedWith(displayOrder))
             }
         awaitClose { registration.remove() }
     }

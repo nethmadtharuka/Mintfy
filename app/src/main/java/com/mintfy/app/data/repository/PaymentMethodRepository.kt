@@ -8,6 +8,9 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Source
 import com.mintfy.app.data.model.DefaultReferenceData
+import com.mintfy.app.data.local.CacheDao
+import com.mintfy.app.data.local.toCached
+import com.mintfy.app.data.local.toModel
 import com.mintfy.app.data.model.PaymentMethod
 import com.mintfy.app.data.model.PaymentMethodType
 import kotlinx.coroutines.channels.awaitClose
@@ -24,6 +27,7 @@ import javax.inject.Singleton
 class PaymentMethodRepository @Inject constructor(
     private val firestore: FirebaseFirestore,
     private val auth: FirebaseAuth,
+    private val cache: CacheDao,
 ) {
 
     private val seedLock = Mutex()
@@ -39,6 +43,10 @@ class PaymentMethodRepository @Inject constructor(
             close(signedOut())
             return@callbackFlow
         }
+        val cacheFirst = CacheFirst(this, "payment methods") { list ->
+            cache.replacePaymentMethods(uid, list.mapIndexed { i, item -> item.toCached(uid, i) })
+        }
+        cacheFirst.startFrom { cache.paymentMethods(uid).mapNotNull { it.toModel() } }
         launch { ensureDefaults(uid) } // in the background, so the list never waits on the network
         val registration = paymentMethods(uid)
             .whereEqualTo(ARCHIVED, false)
@@ -48,7 +56,7 @@ class PaymentMethodRepository @Inject constructor(
                     return@addSnapshotListener
                 }
                 val list = snapshot?.documents.orEmpty().mapNotNull { it.toPaymentMethod() }
-                trySend(list.sortedWith(displayOrder))
+                cacheFirst.onLive(list.sortedWith(displayOrder))
             }
         awaitClose { registration.remove() }
     }

@@ -61,8 +61,8 @@ class AuthViewModel @Inject constructor(
     ) { authRepository.register(email, password, displayName) }
 
     fun signOut() {
-        authRepository.signOut()
         _form.value = AuthFormState()
+        viewModelScope.launch { authRepository.signOut() }
     }
 
     /** Clears old errors when switching between the sign-in and register screens. */
