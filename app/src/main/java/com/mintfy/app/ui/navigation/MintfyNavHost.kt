@@ -31,6 +31,7 @@ import com.mintfy.app.ui.screens.expense.AddExpenseScreen
 import com.mintfy.app.ui.screens.history.EntryKind
 import com.mintfy.app.ui.screens.history.HistoryScreen
 import com.mintfy.app.ui.screens.income.AddIncomeScreen
+import com.mintfy.app.ui.screens.income.IncomeScreen
 import com.mintfy.app.ui.screens.invoices.InvoicesScreen
 import com.mintfy.app.ui.screens.invoices.UnpaidInvoicesCard
 
@@ -47,6 +48,7 @@ object Routes {
     const val ADD_INCOME = "add_income"
     const val HISTORY = "history"
     const val INVOICES = "invoices"
+    const val INCOME = "income"
 
     /** Optional entry ID for editing an existing entry. */
     const val ARG_ID = "id"
@@ -184,6 +186,12 @@ fun MintfyNavHost(
                     }
                 },
 
+                onIncome = {
+                    navController.navigate(Routes.INCOME) {
+                        launchSingleTop = true
+                    }
+                },
+
                 onHistory = {
                     navController.navigate(Routes.HISTORY) {
                         launchSingleTop = true
@@ -310,6 +318,36 @@ fun MintfyNavHost(
                 onSaved = close
             )
         }
+        // Figma "04 Income & freelance invoices" (FR-B1 to FR-B9).
+        composable(Routes.INCOME) { entry ->
+
+            if (session !is Session.SignedIn) {
+                return@composable
+            }
+
+            IncomeScreen(
+                onBack = navController.closer(entry),
+
+                onAddIncome = {
+                    navController.navigate(Routes.ADD_INCOME) {
+                        launchSingleTop = true
+                    }
+                },
+
+                onOpenEntry = { id ->
+                    navController.navigate(Routes.editIncome(id)) {
+                        launchSingleTop = true
+                    }
+                },
+
+                onViewInvoices = {
+                    navController.navigate(Routes.INVOICES) {
+                        launchSingleTop = true
+                    }
+                },
+            )
+        }
+
         composable(Routes.SAVINGS_GOAL) { entry ->
 
             if (session !is Session.SignedIn) {

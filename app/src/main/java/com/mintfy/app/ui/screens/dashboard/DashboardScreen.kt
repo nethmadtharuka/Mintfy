@@ -43,6 +43,7 @@ fun DashboardScreen(
     goalViewModel: GoalViewModel,
     onAddExpense: () -> Unit,
     onAddIncome: () -> Unit,
+    onIncome: () -> Unit,
     onHistory: () -> Unit,
     onSignOut: () -> Unit,
     onSavingsGoal: () -> Unit,
@@ -168,6 +169,11 @@ fun DashboardScreen(
             }
 
             // Existing dashboard navigation actions.
+            SecondaryButton(
+                text = "Income",
+                onClick = onIncome
+            )
+
             SecondaryButton(
                 text = "Add income",
                 onClick = onAddIncome

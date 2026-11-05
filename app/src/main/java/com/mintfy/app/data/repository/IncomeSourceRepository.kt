@@ -63,6 +63,30 @@ class IncomeSourceRepository @Inject constructor(
         return sources(uid).document().createAndConfirm(data) { it.toSaveError("income source") }
     }
 
+    /**
+     * Renames a source and sets or clears its expected salary (FR-B1, FR-B3). Inputs must already be
+     * validated. The type and currency are not touched; the rules keep the type fixed for good.
+     */
+    suspend fun updateSource(id: String, name: String, expectedAmountCents: Long?): Result<SaveOutcome> {
+        val uid = auth.currentUser?.uid ?: return Result.failure(signedOut())
+        val data = mapOf<String, Any>(
+            NAME to name.trim(),
+            EXPECTED_AMOUNT_CENTS to (expectedAmountCents ?: FieldValue.delete()),
+            UPDATED_AT to FieldValue.serverTimestamp(),
+        )
+        return sources(uid).document(id).confirmWrite({ it.toSaveError("income source") }) { update(data) }
+    }
+
+    /**
+     * Hides a source from the add-income form. Sources are archived, never deleted (schema D-07),
+     * so income already recorded against it keeps its name in history and totals.
+     */
+    suspend fun archiveSource(id: String): Result<SaveOutcome> {
+        val uid = auth.currentUser?.uid ?: return Result.failure(signedOut())
+        val data = mapOf<String, Any>(ARCHIVED to true, UPDATED_AT to FieldValue.serverTimestamp())
+        return sources(uid).document(id).confirmWrite({ it.toSaveError("income source") }) { update(data) }
+    }
+
     private fun sources(uid: String) =
         firestore.collection("users").document(uid).collection("incomeSources")
 

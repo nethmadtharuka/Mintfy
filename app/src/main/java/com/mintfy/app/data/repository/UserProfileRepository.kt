@@ -90,6 +90,21 @@ class UserProfileRepository @Inject constructor(
         ).await()
     }
 
+    /**
+     * Sets or clears the monthly income estimate (FR-B8); both null removes it. Inputs must already be
+     * validated (min ≤ max, as the rules require). Only these two fields and updatedAt change, and the
+     * write is offline-safe: it waits briefly for the server, then reports it as waiting to sync.
+     */
+    suspend fun updateEstimate(minCents: Long?, maxCents: Long?): Result<SaveOutcome> {
+        val uid = auth.currentUser?.uid ?: return Result.failure(signedOut())
+        val data = mapOf<String, Any>(
+            ESTIMATE_MIN_CENTS to (minCents ?: FieldValue.delete()),
+            ESTIMATE_MAX_CENTS to (maxCents ?: FieldValue.delete()),
+            UPDATED_AT to FieldValue.serverTimestamp(),
+        )
+        return profileDoc(uid).confirmWrite({ it.toSaveError("income estimate") }) { update(data) }
+    }
+
     private fun profileDoc(uid: String) = firestore.collection("users").document(uid)
 
     private fun DocumentSnapshot.toUserProfile() = UserProfile(
