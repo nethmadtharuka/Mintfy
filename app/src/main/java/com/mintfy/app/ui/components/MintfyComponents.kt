@@ -66,7 +66,7 @@ import java.time.format.DateTimeFormatter
 /**
  * Figma "Top bar": 22 Bold title, 16dp padding, below the status bar.
  * With [onBack], shows the green "‹" back arrow used on the Add income and Add expense frames.
- * [actions] go on the right, for example the dashboard's "⋮" menu.
+ * [actions] go on the right, for example the dashboard's "⋮" menu. The sync indicator sits before them.
  */
 @Composable
 fun MintfyTopBar(
@@ -95,6 +95,7 @@ fun MintfyTopBar(
             color = MaterialTheme.colorScheme.onBackground,
             modifier = Modifier.weight(1f),
         )
+        SyncIndicator() // FR-G5: shown on every screen, only while offline or not yet synced
         actions()
     }
 }
