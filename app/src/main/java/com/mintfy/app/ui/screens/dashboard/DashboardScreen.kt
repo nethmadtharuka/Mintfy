@@ -50,6 +50,7 @@ fun DashboardScreen(
     onAddExpense: () -> Unit,
     onAddIncome: () -> Unit,
     onSignOut: () -> Unit,
+    onCategories: () -> Unit,
     onSavingsGoal: () -> Unit,
     unpaidInvoices: @Composable () -> Unit = {},
     dashboardViewModel: DashboardViewModel = hiltViewModel(),
@@ -89,7 +90,7 @@ fun DashboardScreen(
         topBar = {
             // Figma "02 Dashboard": the top bar names the month the figures are for.
             MintfyTopBar(monthTitle(dashboard.month)) {
-                DashboardMenu(onSignOut = onSignOut)
+                DashboardMenu(onCategories = onCategories, onSignOut = onSignOut)
             }
         },
 
@@ -182,7 +183,7 @@ fun DashboardScreen(
  * Income, History and Goal are tabs now, and Add income is on the Income tab.
  */
 @Composable
-private fun DashboardMenu(onSignOut: () -> Unit) {
+private fun DashboardMenu(onCategories: () -> Unit, onSignOut: () -> Unit) {
 
     var expanded by remember { mutableStateOf(false) }
 
@@ -203,6 +204,14 @@ private fun DashboardMenu(onSignOut: () -> Unit) {
             expanded = expanded,
             onDismissRequest = { expanded = false }
         ) {
+
+            DropdownMenuItem(
+                text = { Text("Categories") },
+                onClick = {
+                    expanded = false
+                    onCategories()
+                }
+            )
 
             DropdownMenuItem(
                 text = { Text("Sign out") },

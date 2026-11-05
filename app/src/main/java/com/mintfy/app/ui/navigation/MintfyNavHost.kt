@@ -27,6 +27,7 @@ import com.mintfy.app.ui.screens.auth.AuthViewModel
 import com.mintfy.app.ui.screens.auth.LoginScreen
 import com.mintfy.app.ui.screens.auth.RegisterScreen
 import com.mintfy.app.ui.screens.auth.Session
+import com.mintfy.app.ui.screens.categories.CategoriesScreen
 
 import com.mintfy.app.ui.screens.dashboard.DashboardScreen
 import com.mintfy.app.ui.screens.expense.AddExpenseScreen
@@ -56,6 +57,7 @@ object Routes {
     const val ARG_ID = "id"
 
     const val SAVINGS_GOAL = "savings_goal"
+    const val CATEGORIES = "categories"
 
     fun editExpense(id: String) =
         "$ADD_EXPENSE?$ARG_ID=${Uri.encode(id)}"
@@ -214,6 +216,12 @@ fun MintfyNavHost(
 
                 onSignOut = authViewModel::signOut,
 
+                onCategories = {
+                    navController.navigate(Routes.CATEGORIES) {
+                        launchSingleTop = true
+                    }
+                },
+
                 unpaidInvoices = {
                     UnpaidInvoicesCard(
                         onViewInvoices = {
@@ -353,6 +361,16 @@ fun MintfyNavHost(
                     }
                 },
             )
+        }
+
+        // Figma "08 Categories" (FR-D2, FR-D4), opened from the dashboard's "⋮" menu.
+        composable(Routes.CATEGORIES) { entry ->
+
+            if (session !is Session.SignedIn) {
+                return@composable
+            }
+
+            CategoriesScreen(onBack = navController.closer(entry))
         }
 
         // Bottom-navigation tab.
