@@ -77,6 +77,41 @@ class CategoryRepository @Inject constructor(
             .onFailure { Log.w(TAG, "Default categories not created yet; will retry", it) }
     }
 
+    /**
+     * Creates the user's own category (FR-D4). Inputs must already be validated (see CategoryValidation).
+     * It is never builtIn: the rules keep that flag fixed, so defaults and the user's own stay apart.
+     */
+    suspend fun addCategory(name: String, spendingType: SpendingType): Result<SaveOutcome> {
+        val uid = auth.currentUser?.uid ?: return Result.failure(signedOut())
+        val category = Category(id = "", name = name.trim(), spendingType = spendingType)
+        return categories(uid).document().createAndConfirm(category.toNewDocument()) { it.toSaveError("category") }
+    }
+
+    /**
+     * Renames a category and sets its spending type (FR-D2, FR-D4). Works for defaults too, so
+     * Kavindu can decide that, for him, Subscriptions are discretionary. Past expenses follow the
+     * new type straight away, because an expense takes its type from its category (schema D-05).
+     */
+    suspend fun updateCategory(id: String, name: String, spendingType: SpendingType): Result<SaveOutcome> {
+        val uid = auth.currentUser?.uid ?: return Result.failure(signedOut())
+        val data = mapOf<String, Any>(
+            NAME to name.trim(),
+            SPENDING_TYPE to spendingType.name,
+            UPDATED_AT to FieldValue.serverTimestamp(),
+        )
+        return categories(uid).document(id).confirmWrite({ it.toSaveError("category") }) { update(data) }
+    }
+
+    /**
+     * Hides a category from the add-expense form. Categories are archived, never deleted (the rules
+     * forbid it), so expenses already recorded keep their category and spending type.
+     */
+    suspend fun archiveCategory(id: String): Result<SaveOutcome> {
+        val uid = auth.currentUser?.uid ?: return Result.failure(signedOut())
+        val data = mapOf<String, Any>(ARCHIVED to true, UPDATED_AT to FieldValue.serverTimestamp())
+        return categories(uid).document(id).confirmWrite({ it.toSaveError("category") }) { update(data) }
+    }
+
     private fun categories(uid: String) =
         firestore.collection("users").document(uid).collection("categories")
 
