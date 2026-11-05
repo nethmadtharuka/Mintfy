@@ -28,6 +28,7 @@ import com.mintfy.app.ui.screens.auth.LoginScreen
 import com.mintfy.app.ui.screens.auth.RegisterScreen
 import com.mintfy.app.ui.screens.auth.Session
 import com.mintfy.app.ui.screens.categories.CategoriesScreen
+import com.mintfy.app.ui.screens.recurring.RecurringScreen
 
 import com.mintfy.app.ui.screens.dashboard.DashboardScreen
 import com.mintfy.app.ui.screens.expense.AddExpenseScreen
@@ -58,6 +59,7 @@ object Routes {
 
     const val SAVINGS_GOAL = "savings_goal"
     const val CATEGORIES = "categories"
+    const val RECURRING = "recurring"
 
     fun editExpense(id: String) =
         "$ADD_EXPENSE?$ARG_ID=${Uri.encode(id)}"
@@ -222,6 +224,12 @@ fun MintfyNavHost(
                     }
                 },
 
+                onRecurring = {
+                    navController.navigate(Routes.RECURRING) {
+                        launchSingleTop = true
+                    }
+                },
+
                 unpaidInvoices = {
                     UnpaidInvoicesCard(
                         onViewInvoices = {
@@ -371,6 +379,16 @@ fun MintfyNavHost(
             }
 
             CategoriesScreen(onBack = navController.closer(entry))
+        }
+
+        // Figma "09 Recurring" (FR-C6), opened from the dashboard's "⋮" menu.
+        composable(Routes.RECURRING) { entry ->
+
+            if (session !is Session.SignedIn) {
+                return@composable
+            }
+
+            RecurringScreen(onBack = navController.closer(entry))
         }
 
         // Bottom-navigation tab.

@@ -51,6 +51,7 @@ fun DashboardScreen(
     onAddIncome: () -> Unit,
     onSignOut: () -> Unit,
     onCategories: () -> Unit,
+    onRecurring: () -> Unit,
     onSavingsGoal: () -> Unit,
     unpaidInvoices: @Composable () -> Unit = {},
     dashboardViewModel: DashboardViewModel = hiltViewModel(),
@@ -90,7 +91,7 @@ fun DashboardScreen(
         topBar = {
             // Figma "02 Dashboard": the top bar names the month the figures are for.
             MintfyTopBar(monthTitle(dashboard.month)) {
-                DashboardMenu(onCategories = onCategories, onSignOut = onSignOut)
+                DashboardMenu(onCategories = onCategories, onRecurring = onRecurring, onSignOut = onSignOut)
             }
         },
 
@@ -183,7 +184,11 @@ fun DashboardScreen(
  * Income, History and Goal are tabs now, and Add income is on the Income tab.
  */
 @Composable
-private fun DashboardMenu(onCategories: () -> Unit, onSignOut: () -> Unit) {
+private fun DashboardMenu(
+    onCategories: () -> Unit,
+    onRecurring: () -> Unit,
+    onSignOut: () -> Unit,
+) {
 
     var expanded by remember { mutableStateOf(false) }
 
@@ -210,6 +215,14 @@ private fun DashboardMenu(onCategories: () -> Unit, onSignOut: () -> Unit) {
                 onClick = {
                     expanded = false
                     onCategories()
+                }
+            )
+
+            DropdownMenuItem(
+                text = { Text("Recurring expenses") },
+                onClick = {
+                    expanded = false
+                    onRecurring()
                 }
             )
 
