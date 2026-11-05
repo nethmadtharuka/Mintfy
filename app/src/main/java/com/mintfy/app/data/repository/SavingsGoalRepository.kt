@@ -106,110 +106,67 @@ class SavingsGoalRepository @Inject constructor(
         }
     }
 
-    suspend fun createGoal(
-        goal: SavingsGoal
-    ): Result<Unit> = runCatching {
+    /**
+     * Creates the goal (FR-E1). The rules allow one document, "active", and only as a create, so
+     * Firestore itself is asked whether a goal already exists (the server when online, its cache
+     * offline); the Room copy alone can be empty after a reinstall while the server still has one.
+     * The goal shows at once from Room. If the server rejects it, the Room copy is removed again and
+     * the error is shown, so a goal never seems saved and then silently disappears.
+     */
+    suspend fun createGoal(goal: SavingsGoal): Result<Unit> {
+        val uid = auth.currentUser?.uid ?: return Result.failure(signedOut())
+        runCatching { validateGoal(goal) }.onFailure { return Result.failure(it) }
 
-        val uid = auth.currentUser?.uid
-            ?: error("You're signed out. Please sign in again.")
-
-        validateGoal(goal)
-
-        val cachedGoal = dao.getActiveGoal(uid)
-
-        require(cachedGoal == null) {
-            "An active savings goal already exists."
+        val onServer = runCatching { goalDocument(uid).get().await() }.getOrNull() // offline and not cached: unknown
+        if (onServer?.exists() == true || dao.getActiveGoal(uid) != null) {
+            return Result.failure(RepositoryException("You already have a savings goal. Edit it instead."))
         }
 
-        dao.upsert(
-            SavingsGoalEntity.from(goal, uid)
-        )
-
-        val data = mapOf(
-            "name" to goal.name.trim(),
-            "targetAmountCents" to goal.targetAmountCents,
-            "startingSavedCents" to goal.startingSavedCents,
-            "startDate" to goal.startDate.toTimestamp(),
-            "deadline" to goal.deadline.toTimestamp(),
-            "status" to goal.status.name,
+        val data = goal.toFields() + mapOf(
             "createdAt" to FieldValue.serverTimestamp(),
-            "updatedAt" to FieldValue.serverTimestamp()
+            "updatedAt" to FieldValue.serverTimestamp(),
         )
-
-        goalDocument(uid)
-            .set(data)
-            .addOnFailureListener { error ->
-                Log.e(
-                    TAG,
-                    "Savings goal synchronization failed",
-                    error
-                )
-            }
+        dao.upsert(SavingsGoalEntity.from(goal, uid))
+        return goalDocument(uid).createAndConfirm(data) { it.toSaveError("savings goal") }
+            .onFailure { dao.deleteActiveGoal(uid) }
+            .map { }
     }
 
-    suspend fun updateGoal(
-        goal: SavingsGoal
-    ): Result<Unit> = runCatching {
+    /** Changes the goal. createdAt is left alone, as the rules require. Undone locally if rejected. */
+    suspend fun updateGoal(goal: SavingsGoal): Result<Unit> {
+        val uid = auth.currentUser?.uid ?: return Result.failure(signedOut())
+        runCatching { validateGoal(goal) }.onFailure { return Result.failure(it) }
+        val previous = dao.getActiveGoal(uid)
+            ?: return Result.failure(RepositoryException("This savings goal no longer exists."))
 
-        val uid = auth.currentUser?.uid
-            ?: error("You're signed out. Please sign in again.")
-
-        validateGoal(goal)
-
-        val existingGoal = dao.getActiveGoal(uid)
-
-        require(existingGoal != null) {
-            "Savings goal does not exist."
-        }
-
-        dao.upsert(
-            SavingsGoalEntity.from(goal, uid)
-        )
-
-        val data = mapOf(
-            "name" to goal.name.trim(),
-            "targetAmountCents" to goal.targetAmountCents,
-            "startingSavedCents" to goal.startingSavedCents,
-            "startDate" to goal.startDate.toTimestamp(),
-            "deadline" to goal.deadline.toTimestamp(),
-            "status" to goal.status.name,
-            "updatedAt" to FieldValue.serverTimestamp()
-        )
-
-        goalDocument(uid)
-            .update(data)
-            .addOnFailureListener { error ->
-                Log.e(
-                    TAG,
-                    "Savings goal update synchronization failed",
-                    error
-                )
-            }
+        val data = goal.toFields() + ("updatedAt" to FieldValue.serverTimestamp())
+        dao.upsert(SavingsGoalEntity.from(goal, uid))
+        return goalDocument(uid).confirmWrite({ it.toSaveError("savings goal") }) { update(data) }
+            .onFailure { dao.upsert(previous) }
+            .map { }
     }
 
-    suspend fun deleteGoal(): Result<Unit> = runCatching {
-
-        val uid = auth.currentUser?.uid
-            ?: error("You're signed out. Please sign in again.")
-
-        val existingGoal = dao.getActiveGoal(uid)
-
-        require(existingGoal != null) {
-            "Savings goal does not exist."
-        }
+    /** Deletes the goal; the screen asks for confirmation first. Restored locally if rejected. */
+    suspend fun deleteGoal(): Result<Unit> {
+        val uid = auth.currentUser?.uid ?: return Result.failure(signedOut())
+        val previous = dao.getActiveGoal(uid)
+            ?: return Result.failure(RepositoryException("This savings goal no longer exists."))
 
         dao.deleteActiveGoal(uid)
-
-        goalDocument(uid)
-            .delete()
-            .addOnFailureListener { error ->
-                Log.e(
-                    TAG,
-                    "Savings goal deletion synchronization failed",
-                    error
-                )
-            }
+        return goalDocument(uid).confirmWrite({ it.toSaveError("savings goal") }) { delete() }
+            .onFailure { dao.upsert(previous) }
+            .map { }
     }
+
+    /** The fields every goal write sends, named as in firestore.rules (users/{uid}/goals). */
+    private fun SavingsGoal.toFields(): Map<String, Any> = mapOf(
+        "name" to name.trim(),
+        "targetAmountCents" to targetAmountCents,
+        "startingSavedCents" to startingSavedCents,
+        "startDate" to startDate.toTimestamp(),
+        "deadline" to deadline.toTimestamp(),
+        "status" to status.name,
+    )
 
     suspend fun retrySync(): Result<Unit> = runCatching {
 
