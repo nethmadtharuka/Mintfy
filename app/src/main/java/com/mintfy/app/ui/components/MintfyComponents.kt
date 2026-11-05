@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -65,9 +66,14 @@ import java.time.format.DateTimeFormatter
 /**
  * Figma "Top bar": 22 Bold title, 16dp padding, below the status bar.
  * With [onBack], shows the green "‹" back arrow used on the Add income and Add expense frames.
+ * [actions] go on the right, for example the dashboard's "⋮" menu.
  */
 @Composable
-fun MintfyTopBar(title: String, onBack: (() -> Unit)? = null) {
+fun MintfyTopBar(
+    title: String,
+    onBack: (() -> Unit)? = null,
+    actions: @Composable RowScope.() -> Unit = {},
+) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -87,7 +93,9 @@ fun MintfyTopBar(title: String, onBack: (() -> Unit)? = null) {
             text = title,
             style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.weight(1f),
         )
+        actions()
     }
 }
 
