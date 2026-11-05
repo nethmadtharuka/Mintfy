@@ -26,7 +26,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mintfy.app.data.model.SavingsGoalProgress
 import com.mintfy.app.ui.components.MintfyCard
 import com.mintfy.app.ui.components.MintfyTopBar
@@ -38,7 +40,6 @@ import java.math.BigDecimal
 
 @Composable
 fun DashboardScreen(
-    email: String?,
     goalViewModel: GoalViewModel,
     onAddExpense: () -> Unit,
     onAddIncome: () -> Unit,
@@ -46,20 +47,24 @@ fun DashboardScreen(
     onSignOut: () -> Unit,
     onSavingsGoal: () -> Unit,
     unpaidInvoices: @Composable () -> Unit = {},
+    dashboardViewModel: DashboardViewModel = hiltViewModel(),
 ) {
 
     val goalState by goalViewModel.uiState.collectAsState()
+    val dashboard by dashboardViewModel.uiState.collectAsStateWithLifecycle()
+    val summary = dashboard.summary
 
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    // Refresh date-dependent goal calculations when
-    // the Dashboard becomes active again.
+    // Refresh date-dependent goal calculations (and roll the dashboard over to a new month)
+    // when the Dashboard becomes active again.
     LaunchedEffect(lifecycleOwner) {
 
         val observer = LifecycleEventObserver { _, event ->
 
             if (event == Lifecycle.Event.ON_RESUME) {
                 goalViewModel.refresh()
+                dashboardViewModel.refresh()
             }
         }
 
@@ -76,7 +81,8 @@ fun DashboardScreen(
 
     Scaffold(
         topBar = {
-            MintfyTopBar("Dashboard")
+            // Figma "02 Dashboard": the top bar names the month the figures are for.
+            MintfyTopBar(monthTitle(dashboard.month))
         },
 
         floatingActionButton = {
@@ -95,32 +101,23 @@ fun DashboardScreen(
                 .padding(16.dp)
         ) {
 
-            // Signed-in user information.
-            if (email != null) {
+            // Loading, or an error with retry above the last figures (FR-H1, FR-H2).
+            DashboardStatus(dashboard, onRetry = dashboardViewModel::retry)
 
-                MintfyCard {
-
-                    Text(
-                        "Signed in as",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    Text(
-                        email,
-                        style = MaterialTheme.typography.titleMedium
-                    )
+            // FR-F1: savings this month, or the next step when the month is still empty.
+            if (summary != null) {
+                if (summary.isEmpty) {
+                    EmptyMonthCard(summary.month, onAddExpense = onAddExpense, onAddIncome = onAddIncome)
+                } else {
+                    SavingsThisMonthCard(summary)
                 }
             }
-
-            // Existing unpaid freelance invoices section.
-            unpaidInvoices()
 
             // FR-F4: Savings Goal Progress Card.
             when {
 
                 goalState.isLoading && goalState.goal == null -> {
-                    Text("Loading savings goal...")
+                    LoadingCard()
                 }
 
                 goalState.goal != null &&
@@ -153,6 +150,21 @@ fun DashboardScreen(
                         )
                     }
                 }
+            }
+
+            // FR-F2: committed vs discretionary (Figma "Where your money went").
+            if (summary != null && !summary.isEmpty) {
+                MoneySplitCard(summary)
+            }
+
+            // Existing unpaid freelance invoices section (FR-B7, not counted as income).
+            unpaidInvoices()
+
+            // FR-F3, FR-F6, FR-B8: the rest of the month's picture.
+            if (summary != null && !summary.isEmpty) {
+                TopCategoriesCard(summary)
+                IncomeBySourceCard(summary)
+                summary.estimate?.let { EstimateCard(it) }
             }
 
             // Existing dashboard navigation actions.
