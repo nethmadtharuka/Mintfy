@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.mintfy.app.data.model.IncomeStatus
 import com.mintfy.app.data.model.SavingsGoal
 import com.mintfy.app.data.model.SavingsGoalProgress
+import com.mintfy.app.data.model.SavingsGoalStatus
 import com.mintfy.app.data.repository.ExpenseRepository
 import com.mintfy.app.data.repository.IncomeRepository
 import com.mintfy.app.data.repository.SavingsGoalRepository
@@ -169,9 +170,25 @@ class GoalViewModel @Inject constructor(
                         progress = progress,
                         error = null
                     )
+                    markAchievedIfReached(goal, progress)
                 }
         }
     }
+
+    /**
+     * Once the target is reached, the goal is saved as ACHIEVED, once, so it stays recorded as
+     * reached even if later spending lowers the figures. The listener then shows the new status.
+     */
+    private fun markAchievedIfReached(goal: SavingsGoal, progress: SavingsGoalProgress) {
+        if (goal.status != SavingsGoalStatus.ACTIVE || progress.remainingCents > 0L || markingAchieved) return
+        markingAchieved = true
+        viewModelScope.launch {
+            goalRepository.updateGoal(goal.copy(status = SavingsGoalStatus.ACHIEVED))
+            markingAchieved = false
+        }
+    }
+
+    private var markingAchieved = false
 
     fun createGoal(goal: SavingsGoal) {
         viewModelScope.launch {
