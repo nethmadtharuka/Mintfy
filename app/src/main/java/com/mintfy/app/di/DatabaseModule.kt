@@ -2,6 +2,8 @@ package com.mintfy.app.di
 
 import android.content.Context
 import androidx.room.Room
+import com.mintfy.app.data.local.CacheDao
+import com.mintfy.app.data.local.MIGRATION_1_2
 import com.mintfy.app.data.local.MintfyDatabase
 import com.mintfy.app.data.local.SavingsGoalDao
 import dagger.Module
@@ -25,7 +27,9 @@ object DatabaseModule {
             context,
             MintfyDatabase::class.java,
             "mintfy.db"
-        ).build()
+        )
+            .addMigrations(MIGRATION_1_2)
+            .build()
     }
 
     @Provides
@@ -34,5 +38,13 @@ object DatabaseModule {
     ): SavingsGoalDao {
 
         return database.savingsGoalDao()
+    }
+
+    @Provides
+    fun provideCacheDao(
+        database: MintfyDatabase
+    ): CacheDao {
+
+        return database.cacheDao()
     }
 }
