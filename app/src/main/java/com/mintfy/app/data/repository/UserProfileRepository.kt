@@ -11,6 +11,7 @@ import com.mintfy.app.data.model.UserProfile
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -35,6 +36,12 @@ class UserProfileRepository @Inject constructor(
             trySend(snapshot?.takeIf { it.exists() }?.toUserProfile())
         }
         awaitClose { registration.remove() }
+    }
+
+    /** The signed-in user's profile, live; null while signed out or before the profile exists. */
+    fun observeCurrentProfile(): Flow<UserProfile?> {
+        val uid = auth.currentUser?.uid ?: return flowOf(null)
+        return observeProfile(uid)
     }
 
     /**
@@ -81,6 +88,21 @@ class UserProfileRepository @Inject constructor(
                 UPDATED_AT to FieldValue.serverTimestamp(),
             )
         ).await()
+    }
+
+    /**
+     * Sets or clears the monthly income estimate (FR-B8); both null removes it. Inputs must already be
+     * validated (min ≤ max, as the rules require). Only these two fields and updatedAt change, and the
+     * write is offline-safe: it waits briefly for the server, then reports it as waiting to sync.
+     */
+    suspend fun updateEstimate(minCents: Long?, maxCents: Long?): Result<SaveOutcome> {
+        val uid = auth.currentUser?.uid ?: return Result.failure(signedOut())
+        val data = mapOf<String, Any>(
+            ESTIMATE_MIN_CENTS to (minCents ?: FieldValue.delete()),
+            ESTIMATE_MAX_CENTS to (maxCents ?: FieldValue.delete()),
+            UPDATED_AT to FieldValue.serverTimestamp(),
+        )
+        return profileDoc(uid).confirmWrite({ it.toSaveError("income estimate") }) { update(data) }
     }
 
     private fun profileDoc(uid: String) = firestore.collection("users").document(uid)
