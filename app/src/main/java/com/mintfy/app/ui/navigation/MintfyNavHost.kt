@@ -160,15 +160,14 @@ fun MintfyNavHost(
         composable(Routes.DASHBOARD) {
 
             // Never render signed-in content without a session.
-            val signedIn = session as? Session.SignedIn
-                ?: return@composable
+            if (session !is Session.SignedIn) {
+                return@composable
+            }
 
             // Obtain Savings Goal ViewModel using Hilt.
             val goalViewModel: GoalViewModel = hiltViewModel()
 
             DashboardScreen(
-
-                email = signedIn.email,
 
                 // FR-F4: Pass goal data to Dashboard.
                 goalViewModel = goalViewModel,
