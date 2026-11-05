@@ -11,6 +11,7 @@ import com.mintfy.app.data.model.UserProfile
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -35,6 +36,12 @@ class UserProfileRepository @Inject constructor(
             trySend(snapshot?.takeIf { it.exists() }?.toUserProfile())
         }
         awaitClose { registration.remove() }
+    }
+
+    /** The signed-in user's profile, live; null while signed out or before the profile exists. */
+    fun observeCurrentProfile(): Flow<UserProfile?> {
+        val uid = auth.currentUser?.uid ?: return flowOf(null)
+        return observeProfile(uid)
     }
 
     /**
