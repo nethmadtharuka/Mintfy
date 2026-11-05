@@ -44,10 +44,11 @@ import java.time.LocalDate
 
 @Composable
 fun HistoryScreen(
-    onBack: () -> Unit,
     onOpenEntry: (HistoryRow) -> Unit,
     onAddExpense: () -> Unit,
     onAddIncome: () -> Unit,
+    onBack: (() -> Unit)? = null, // null when History is shown as a bottom-navigation tab
+    bottomBar: @Composable () -> Unit = {},
     viewModel: HistoryViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -63,12 +64,13 @@ fun HistoryScreen(
             onAddExpense = onAddExpense,
             onAddIncome = onAddIncome,
         ),
+        bottomBar = bottomBar,
     )
 }
 
 /** Everything the user can do on the screen, so the content stays stateless and previewable. */
 data class HistoryActions(
-    val onBack: () -> Unit = {},
+    val onBack: (() -> Unit)? = null,
     val onFromSelected: (LocalDate) -> Unit = {},
     val onToSelected: (LocalDate) -> Unit = {},
     val onCategorySelected: (String?) -> Unit = {},
@@ -82,11 +84,14 @@ private const val ALL_CATEGORIES = "" // chip ID for "no category filter"
 
 /** Past income and expenses with date-range and category filters (FR-C7). Tap an entry to edit or delete it (FR-C5). */
 @Composable
-fun HistoryContent(state: HistoryUiState, actions: HistoryActions) {
+fun HistoryContent(state: HistoryUiState, actions: HistoryActions, bottomBar: @Composable () -> Unit = {}) {
     var picking by rememberSaveable { mutableStateOf<String?>(null) } // "from", "to" or null
     val today = LocalDate.now()
 
-    Scaffold(topBar = { MintfyTopBar("History", onBack = actions.onBack) }) { innerPadding ->
+    Scaffold(
+        topBar = { MintfyTopBar("History", onBack = actions.onBack) },
+        bottomBar = bottomBar,
+    ) { innerPadding ->
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(16.dp),

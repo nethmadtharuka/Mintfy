@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -19,9 +18,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -49,6 +45,7 @@ fun DashboardScreen(
     onSavingsGoal: () -> Unit,
     unpaidInvoices: @Composable () -> Unit = {},
     dashboardViewModel: DashboardViewModel = hiltViewModel(),
+    bottomBar: @Composable () -> Unit = {},
 ) {
 
     val goalState by goalViewModel.uiState.collectAsState()
@@ -86,9 +83,8 @@ fun DashboardScreen(
             MintfyTopBar(monthTitle(dashboard.month))
         },
 
-        floatingActionButton = {
-            AddExpenseButton(onClick = onAddExpense)
-        }
+        // Figma "Bottom nav": tabs plus the green "+" that opens Add expense.
+        bottomBar = bottomBar,
 
     ) { innerPadding ->
 
@@ -292,30 +288,4 @@ private fun formatGoalLkr(amountCents: Long): String {
     val amount = BigDecimal.valueOf(amountCents, 2)
 
     return "LKR ${String.format("%,.2f", amount)}"
-}
-
-/** Figma Add Expense floating action button. */
-@Composable
-private fun AddExpenseButton(
-    onClick: () -> Unit
-) {
-
-    FloatingActionButton(
-        onClick = onClick,
-        shape = MaterialTheme.shapes.extraLarge,
-        containerColor = MaterialTheme.colorScheme.primary,
-        contentColor = MaterialTheme.colorScheme.onPrimary,
-
-        modifier = Modifier.semantics {
-            contentDescription = "Add expense"
-        }
-
-    ) {
-
-        Text(
-            "+",
-            style = MaterialTheme.typography.headlineMedium,
-            modifier = Modifier.clearAndSetSemantics {}
-        )
-    }
 }

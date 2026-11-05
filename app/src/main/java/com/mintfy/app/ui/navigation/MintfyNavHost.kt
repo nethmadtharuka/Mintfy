@@ -21,6 +21,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 
+import com.mintfy.app.ui.components.MainTab
+import com.mintfy.app.ui.components.MintfyBottomBar
 import com.mintfy.app.ui.screens.auth.AuthViewModel
 import com.mintfy.app.ui.screens.auth.LoginScreen
 import com.mintfy.app.ui.screens.auth.RegisterScreen
@@ -75,6 +77,15 @@ private val authRoutes = setOf(
     Routes.REGISTER
 )
 
+/** The screen each bottom-navigation tab opens. */
+private val MainTab.route: String
+    get() = when (this) {
+        MainTab.DASHBOARD -> Routes.DASHBOARD
+        MainTab.INCOME -> Routes.INCOME
+        MainTab.HISTORY -> Routes.HISTORY
+        MainTab.GOAL -> Routes.SAVINGS_GOAL
+    }
+
 
 @Composable
 fun MintfyNavHost(
@@ -123,8 +134,24 @@ fun MintfyNavHost(
                     route !in authRoutes -> {
 
                 navController.replaceAll(Routes.LOGIN)
+                navController.clearTabStacks()
             }
         }
+    }
+
+    val openAddExpense = {
+        navController.navigate(Routes.ADD_EXPENSE) {
+            launchSingleTop = true
+        }
+    }
+
+    // Figma "Bottom nav", shared by the four top-level screens.
+    val tabBar: @Composable (MainTab) -> Unit = { tab ->
+        MintfyBottomBar(
+            selected = tab,
+            onSelect = navController::openTab,
+            onAddExpense = openAddExpense,
+        )
     }
 
 
@@ -174,11 +201,7 @@ fun MintfyNavHost(
                 // FR-F4: Pass goal data to Dashboard.
                 goalViewModel = goalViewModel,
 
-                onAddExpense = {
-                    navController.navigate(Routes.ADD_EXPENSE) {
-                        launchSingleTop = true
-                    }
-                },
+                onAddExpense = openAddExpense,
 
                 onAddIncome = {
                     navController.navigate(Routes.ADD_INCOME) {
@@ -186,23 +209,12 @@ fun MintfyNavHost(
                     }
                 },
 
-                onIncome = {
-                    navController.navigate(Routes.INCOME) {
-                        launchSingleTop = true
-                    }
-                },
+                // These screens are tabs now, so open them the way the bottom bar does.
+                onIncome = { navController.openTab(MainTab.INCOME) },
 
-                onHistory = {
-                    navController.navigate(Routes.HISTORY) {
-                        launchSingleTop = true
-                    }
-                },
+                onHistory = { navController.openTab(MainTab.HISTORY) },
 
-                onSavingsGoal = {
-                    navController.navigate(Routes.SAVINGS_GOAL) {
-                        launchSingleTop = true
-                    }
-                },
+                onSavingsGoal = { navController.openTab(MainTab.GOAL) },
 
                 onSignOut = authViewModel::signOut,
 
@@ -215,6 +227,8 @@ fun MintfyNavHost(
                         }
                     )
                 },
+
+                bottomBar = { tabBar(MainTab.DASHBOARD) },
             )
         }
 
@@ -244,7 +258,8 @@ fun MintfyNavHost(
             )
         }
 
-        composable(Routes.HISTORY) { entry ->
+        // Bottom-navigation tab: no back arrow; the system back button returns to the Dashboard.
+        composable(Routes.HISTORY) {
 
             if (session !is Session.SignedIn) {
                 return@composable
@@ -252,7 +267,7 @@ fun MintfyNavHost(
 
             HistoryScreen(
 
-                onBack = navController.closer(entry),
+                bottomBar = { tabBar(MainTab.HISTORY) },
 
                 onOpenEntry = { row ->
 
@@ -270,11 +285,7 @@ fun MintfyNavHost(
                     }
                 },
 
-                onAddExpense = {
-                    navController.navigate(Routes.ADD_EXPENSE) {
-                        launchSingleTop = true
-                    }
-                },
+                onAddExpense = openAddExpense,
 
                 onAddIncome = {
                     navController.navigate(Routes.ADD_INCOME) {
@@ -318,15 +329,15 @@ fun MintfyNavHost(
                 onSaved = close
             )
         }
-        // Figma "04 Income & freelance invoices" (FR-B1 to FR-B9).
-        composable(Routes.INCOME) { entry ->
+        // Figma "04 Income & freelance invoices" (FR-B1 to FR-B9). Bottom-navigation tab.
+        composable(Routes.INCOME) {
 
             if (session !is Session.SignedIn) {
                 return@composable
             }
 
             IncomeScreen(
-                onBack = navController.closer(entry),
+                bottomBar = { tabBar(MainTab.INCOME) },
 
                 onAddIncome = {
                     navController.navigate(Routes.ADD_INCOME) {
@@ -348,7 +359,8 @@ fun MintfyNavHost(
             )
         }
 
-        composable(Routes.SAVINGS_GOAL) { entry ->
+        // Bottom-navigation tab.
+        composable(Routes.SAVINGS_GOAL) {
 
             if (session !is Session.SignedIn) {
                 return@composable
@@ -358,7 +370,7 @@ fun MintfyNavHost(
 
             SavingsGoalScreen(
                 viewModel = goalViewModel,
-                onBack = navController.closer(entry)
+                bottomBar = { tabBar(MainTab.GOAL) },
             )
         }
     }
@@ -376,6 +388,35 @@ private fun NavHostController.closer(
     if (currentBackStackEntry == entry) {
         popBackStack()
     }
+}
+
+
+/**
+ * Switches to a bottom-navigation tab.
+ * The Dashboard stays at the bottom of the stack, so back from any tab returns to it.
+ * The tab being left keeps its own screens (saveState) and they come back when it is
+ * selected again (restoreState), e.g. Income → Invoices stays open after visiting History.
+ */
+private fun NavHostController.openTab(tab: MainTab) = navigate(tab.route) {
+
+    popUpTo(Routes.DASHBOARD) {
+        saveState = true
+    }
+
+    launchSingleTop = true
+    restoreState = true
+}
+
+
+/**
+ * Forgets the tabs' saved screens after sign-out,
+ * so the next account never gets the previous account's screens back.
+ */
+private fun NavHostController.clearTabStacks() {
+
+    MainTab.entries
+        .filter { it != MainTab.DASHBOARD }
+        .forEach { clearBackStack(it.route) }
 }
 
 

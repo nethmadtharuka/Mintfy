@@ -43,7 +43,8 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun SavingsGoalScreen(
     viewModel: GoalViewModel,
-    onBack: () -> Unit
+    onBack: (() -> Unit)? = null, // null when Goal is shown as a bottom-navigation tab
+    bottomBar: @Composable () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsState()
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -88,7 +89,8 @@ fun SavingsGoalScreen(
                 title = "Savings Goal",
                 onBack = onBack
             )
-        }
+        },
+        bottomBar = bottomBar
     ) { padding ->
 
         Column(

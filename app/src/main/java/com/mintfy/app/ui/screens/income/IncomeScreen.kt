@@ -91,7 +91,8 @@ fun IncomeScreen(
     onAddIncome: () -> Unit,
     onOpenEntry: (id: String) -> Unit,
     onViewInvoices: () -> Unit,
-    onBack: (() -> Unit)? = null, // null once Income is a bottom-navigation tab
+    onBack: (() -> Unit)? = null, // null when Income is shown as a bottom-navigation tab
+    bottomBar: @Composable () -> Unit = {},
     viewModel: IncomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -125,13 +126,17 @@ fun IncomeScreen(
             onArchiveSource = viewModel::archiveSource,
             onCloseSource = viewModel::closeSourceEditor,
         ),
+        bottomBar = bottomBar,
     )
 }
 
 /** Figma "04 Income & freelance invoices". Stateless: it only draws [state] and reports what the user does. */
 @Composable
-fun IncomeContent(state: IncomeUiState, actions: IncomeActions) {
-    Scaffold(topBar = { MintfyTopBar("Income", onBack = actions.onBack) }) { innerPadding ->
+fun IncomeContent(state: IncomeUiState, actions: IncomeActions, bottomBar: @Composable () -> Unit = {}) {
+    Scaffold(
+        topBar = { MintfyTopBar("Income", onBack = actions.onBack) },
+        bottomBar = bottomBar,
+    ) { innerPadding ->
         Column(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier
