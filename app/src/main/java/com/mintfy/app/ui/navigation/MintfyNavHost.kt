@@ -209,11 +209,7 @@ fun MintfyNavHost(
                     }
                 },
 
-                // These screens are tabs now, so open them the way the bottom bar does.
-                onIncome = { navController.openTab(MainTab.INCOME) },
-
-                onHistory = { navController.openTab(MainTab.HISTORY) },
-
+                // Goal is a tab, so the goal card opens it the way the bottom bar does.
                 onSavingsGoal = { navController.openTab(MainTab.GOAL) },
 
                 onSignOut = authViewModel::signOut,
